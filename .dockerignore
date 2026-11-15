@@ -1,0 +1,65 @@
+# Správa verzí a lokální artefakty
+.git
+.gitignore
+.github/
+.aistudio/
+.kotlin/
+.vscode/
+.idea/
+.DS_Store
+
+# Lokální klíče, certifikáty a tajné proměnné (NIKDY nekopírovat do Docker obrazu)
+.env
+.env.*
+!.env.example
+certs/
+debug.keystore
+debug.keystore.base64
+*.db
+*.sqlite*
+
+# Android projekt a lokální build výstupy
+app/
+gradle/
+gradlew
+gradlew.bat
+*.gradle.kts
+gradle.properties
+*.apk
+
+# Python cache a testovací artefakty
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+coverage.xml
+.coverage
+.venv/
+venv/
+env/
+backend/test_*.py
+backend/run_backend_audit_tests.py
+
+# Node.js závislosti a lokální buildy frontendu
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Dokumentace, Terraform a pomocné skripty (v kontejneru za běhu nepotřebné)
+*.md
+*.tf
+*.hcl
+terraform.tfstate*
+.terraform/
+scripts/
+cloudbuild.yaml
+docker-compose.yml
+detekt.yml
+sonar-project.properties
+sonar-quality-gate.json
+firebase-blueprint.json
+firebase.json
+firestore.rules
+firestore.test.js
+public/
