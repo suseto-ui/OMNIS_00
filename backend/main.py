@@ -25,7 +25,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .database import get_db, init_db
+from .database import get_db, init_db, is_mock_session
+from backend.security.firestore_store import fs_delete_doc, fs_get_doc, fs_list_collection, fs_set_doc
 from backend.models import Conversation, Message
 from backend.schemas import (
     ThreadCreateRequest,
@@ -63,6 +64,21 @@ logger = logging.getLogger("omnis.api")
 thread_router = APIRouter(prefix="/api/threads", tags=["Thread Persistence"])
 
 
+def _fs_thread_to_response(doc: dict) -> ThreadDetailResponse:
+    created_raw = doc.get("created_at")
+    updated_raw = doc.get("updated_at")
+    created_dt = datetime.fromisoformat(created_raw) if isinstance(created_raw, str) else datetime.now(timezone.utc)
+    updated_dt = datetime.fromisoformat(updated_raw) if isinstance(updated_raw, str) else created_dt
+    return ThreadDetailResponse(
+        id=str(doc.get("id") or doc.get("sessionId")),
+        title=str(doc.get("title") or "Bez názvu"),
+        ontology_domain=str(doc.get("ontology_domain") or doc.get("domain") or "SYSTEMS_INTELLIGENCE"),
+        messages=[],
+        created_at=created_dt,
+        updated_at=updated_dt,
+    )
+
+
 @thread_router.get("", response_model=List[ThreadDetailResponse])
 @thread_router.get("/", response_model=List[ThreadDetailResponse])
 async def list_threads(
@@ -70,6 +86,11 @@ async def list_threads(
     db: AsyncSession = Depends(get_db)
 ):
     """Seznam konverzačních vláken přihlášeného uživatele."""
+    if is_mock_session(db):
+        docs = fs_list_collection("omnis_sessions", filters={"user_id": str(current_user.id)})
+        docs.sort(key=lambda d: str(d.get("updated_at") or ""), reverse=True)
+        return [_fs_thread_to_response(d) for d in docs]
+
     stmt = (
         select(Conversation)
         .options(selectinload(Conversation.messages))
@@ -114,6 +135,31 @@ async def create_thread(
     """Vytvořit nové konverzační vlákno pro přihlášeného uživatele."""
     conv_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
+    if is_mock_session(db):
+        fs_set_doc(
+            "omnis_sessions",
+            conv_id,
+            {
+                "id": conv_id,
+                "sessionId": conv_id,
+                "user_id": str(current_user.id),
+                "userId": str(current_user.id),
+                "title": req.title,
+                "ontology_domain": req.ontology_domain,
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+            },
+            merge=True,
+        )
+        return ThreadDetailResponse(
+            id=conv_id,
+            title=req.title,
+            ontology_domain=req.ontology_domain,
+            messages=[],
+            created_at=now,
+            updated_at=now,
+        )
+
     conv = Conversation(
         id=conv_id,
         user_id=current_user.id,
@@ -141,6 +187,14 @@ async def get_thread(
     db: AsyncSession = Depends(get_db)
 ):
     """Detail konkrétního vlákna včetně historie zpráv."""
+    if is_mock_session(db):
+        doc = fs_get_doc("omnis_sessions", thread_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Vlákno {thread_id} nebylo nalezeno.")
+        if doc.get("user_id") != str(current_user.id) and current_user.role != "ADMIN_OPERATOR":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Přístup k vláknu zamítnut.")
+        return _fs_thread_to_response(doc)
+
     stmt = (
         select(Conversation)
         .options(selectinload(Conversation.messages))
@@ -181,6 +235,20 @@ async def update_thread(
     db: AsyncSession = Depends(get_db)
 ):
     """Aktualizace názvu nebo domény vlákna."""
+    if is_mock_session(db):
+        doc = fs_get_doc("omnis_sessions", thread_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Vlákno {thread_id} nebylo nalezeno.")
+        if doc.get("user_id") != str(current_user.id) and current_user.role != "ADMIN_OPERATOR":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Přístup k vláknu zamítnut.")
+        if req.title is not None:
+            doc["title"] = req.title
+        if req.ontology_domain is not None:
+            doc["ontology_domain"] = req.ontology_domain
+        doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+        fs_set_doc("omnis_sessions", thread_id, doc, merge=True)
+        return _fs_thread_to_response(doc)
+
     stmt = (
         select(Conversation)
         .options(selectinload(Conversation.messages))
@@ -229,6 +297,15 @@ async def delete_thread(
     db: AsyncSession = Depends(get_db)
 ):
     """Smazání vlákna a všech přidružených zpráv."""
+    if is_mock_session(db):
+        doc = fs_get_doc("omnis_sessions", thread_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Vlákno {thread_id} nebylo nalezeno.")
+        if doc.get("user_id") != str(current_user.id) and current_user.role != "ADMIN_OPERATOR":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Přístup k vláknu zamítnut.")
+        fs_delete_doc("omnis_sessions", thread_id)
+        return {"status": "success", "message": f"Vlákno {thread_id} bylo úspěšně smazáno.", "thread_id": thread_id}
+
     stmt = select(Conversation).where(Conversation.id == thread_id)
     result = await db.execute(stmt)
     conv = result.scalar_one_or_none()

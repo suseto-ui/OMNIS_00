@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.database import get_db
+from backend.database import get_db, is_mock_session
 from backend.models import User, AuditLog
 from backend.auth_router import get_current_user
+from backend.security.firestore_store import fs_delete_doc, fs_list_collection, fs_set_doc
 from sqlalchemy import select, func
 import logging
+import uuid
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/api/admin", tags=["Administration"])
 logger = logging.getLogger("omnis.admin")
@@ -54,6 +57,27 @@ async def set_user_role(
             detail="Nelze odebrat roli ADMIN_OPERATOR hlavnímu vlastníkovi systému."
         )
 
+    if is_mock_session(db):
+        users = fs_list_collection("users")
+        matched = next((u for u in users if str(u.get("email", "")).lower() == clean_email), None)
+        if not matched:
+            raise HTTPException(status_code=404, detail="Uživatel nebyl nalezen.")
+        old_role = matched.get("role", "STANDARD_USER")
+        matched["role"] = new_role
+        fs_set_doc("users", str(matched["id"]), matched, merge=True)
+        fs_set_doc(
+            "audit_logs",
+            str(uuid.uuid4()),
+            {
+                "actor_email": current_admin.email,
+                "target_email": matched.get("email"),
+                "action": "UPDATE_ROLE",
+                "details": {"old_role": old_role, "new_role": new_role},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        return {"status": "success", "message": f"Role uživatele {matched.get('email')} byla změněna na {new_role}."}
+
     result = await db.execute(select(User).where(func.lower(User.email) == clean_email))
     user = result.scalar_one_or_none()
 
@@ -82,6 +106,20 @@ async def get_pending_users(
     current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
+    if is_mock_session(db):
+        pending = [u for u in fs_list_collection("users") if not bool(u.get("is_approved", False))]
+        pending.sort(key=lambda u: str(u.get("created_at") or ""), reverse=True)
+        return [
+            {
+                "id": u.get("id"),
+                "username": u.get("username"),
+                "email": u.get("email"),
+                "created_at": u.get("created_at"),
+                "role": u.get("role", "STANDARD_USER"),
+            }
+            for u in pending
+        ]
+
     result = await db.execute(
         select(User)
         .where(User.is_approved == False)  # noqa: E712
@@ -106,6 +144,27 @@ async def approve_user(
     db: AsyncSession = Depends(get_db)
 ):
     clean_email = _normalize_target_email(target_email)
+    if is_mock_session(db):
+        users = fs_list_collection("users")
+        matched = next((u for u in users if str(u.get("email", "")).lower() == clean_email), None)
+        if not matched:
+            raise HTTPException(status_code=404, detail="Uživatel nebyl nalezen.")
+        matched["is_approved"] = True
+        matched["is_active"] = True
+        fs_set_doc("users", str(matched["id"]), matched, merge=True)
+        fs_set_doc(
+            "audit_logs",
+            str(uuid.uuid4()),
+            {
+                "actor_email": current_admin.email,
+                "target_email": matched.get("email"),
+                "action": "APPROVE_USER",
+                "details": {"approved_by": current_admin.email},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        return {"status": "success", "message": f"Uživatel {matched.get('email')} byl schválen a aktivován."}
+
     result = await db.execute(select(User).where(func.lower(User.email) == clean_email))
     user = result.scalar_one_or_none()
     if not user:
@@ -138,6 +197,25 @@ async def reject_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Nelze zamítnout nebo smazat účet aktuálního či hlavního administrátora."
         )
+
+    if is_mock_session(db):
+        users = fs_list_collection("users")
+        matched = next((u for u in users if str(u.get("email", "")).lower() == clean_email), None)
+        if not matched:
+            raise HTTPException(status_code=404, detail="Uživatel nebyl nalezen.")
+        fs_set_doc(
+            "audit_logs",
+            str(uuid.uuid4()),
+            {
+                "actor_email": current_admin.email,
+                "target_email": matched.get("email"),
+                "action": "REJECT_USER",
+                "details": {"rejected_by": current_admin.email},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        fs_delete_doc("users", str(matched["id"]))
+        return {"status": "success", "message": f"Žádost uživatele {matched.get('email')} byla zamítnuta."}
 
     result = await db.execute(select(User).where(func.lower(User.email) == clean_email))
     user = result.scalar_one_or_none()

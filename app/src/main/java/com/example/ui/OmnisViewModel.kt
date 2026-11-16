@@ -411,6 +411,11 @@ class OmnisViewModel @JvmOverloads constructor(
         )
     )
     val cloudSqlSyncStatus = MutableStateFlow<CloudSqlSyncManager.SyncStatus>(CloudSqlSyncManager.SyncStatus.Idle)
+    val pendingOutboxCount: StateFlow<Int> = repository.pendingOutboxCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val lastOutboxSyncTimestamp: StateFlow<Long?> = repository.lastOutboxSyncTimestamp
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val cognitiveAnomalyAlert: StateFlow<Boolean> = com.example.engine.AkgeTensorKernel.cognitiveAnomalyAlert
 
     init {
         repository.initAppContext(application)
@@ -427,6 +432,11 @@ class OmnisViewModel @JvmOverloads constructor(
                 telemetry.value = events
             }
         }
+        viewModelScope.launch {
+            CloudSqlSyncManager.syncStatus.collect { status ->
+                cloudSqlSyncStatus.value = status
+            }
+        }
     }
 
     fun onClearTelemetry() {
@@ -435,6 +445,16 @@ class OmnisViewModel @JvmOverloads constructor(
 
     fun triggerCloudSqlSync() {
         viewModelScope.launch {
+            val (outboxSynced, outboxMsg) = withContext(ioDispatcher) {
+                repository.flushOutboxNow()
+            }
+            if (outboxSynced > 0) {
+                com.example.telemetry.TelemetryEngine.log(
+                    type = "INFO",
+                    component = "OUTBOX_SYNC",
+                    message = outboxMsg
+                )
+            }
             CloudSqlSyncManager.syncPendingRecords(repository.omnisDao)
         }
     }
@@ -846,6 +866,20 @@ class OmnisViewModel @JvmOverloads constructor(
             synthRes.learnedNodeId?.let { nodeId ->
                 learnedNodes.value = (learnedNodes.value + nodeId).takeLast(10)
             }
+
+            com.example.engine.AkgeTensorKernel.updateDomainWeightsAsync(
+                mapOf(
+                    "SYS" to synthRes.valSys,
+                    "ECON" to synthRes.valEcon,
+                    "PSYCH" to synthRes.valPsych,
+                    "ECO" to synthRes.valEco,
+                    "LAW" to synthRes.valLaw,
+                    "SEC" to synthRes.valSec,
+                    "PHYS" to synthRes.valPhys,
+                    "SOC" to synthRes.valSoc
+                ),
+                dispatcher = defaultDispatcher
+            )
 
             // AKGE-8D Real-time Audit Generation on defaultDispatcher
             val prevHash = zkCommitment.value?.commitmentHash ?: "GENESIS"

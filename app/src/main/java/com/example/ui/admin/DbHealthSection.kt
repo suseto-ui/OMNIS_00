@@ -36,6 +36,8 @@ fun AdminDbHealthCard(
     postgresSyncedCount: Int,
     unSyncedCount: Int,
     syncStatus: CloudSqlSyncManager.SyncStatus = CloudSqlSyncManager.SyncStatus.Idle,
+    pendingOutboxCount: Int = 0,
+    lastOutboxSyncTimestamp: Long? = null,
     onSyncNow: () -> Unit = {},
     onTestConnection: () -> Unit = {}
 ) {
@@ -129,7 +131,11 @@ fun AdminDbHealthCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Connection Info Box
+            val formattedLastSync = lastOutboxSyncTimestamp?.let {
+                java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(it))
+            } ?: "Čeká na první dávku"
+
+            // Connection Info Box (Cloud Sync Status: Outbox + Firestore Primary + Optional Cloud SQL)
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = OmnisPanelDark.copy(alpha = 0.6f),
@@ -138,16 +144,31 @@ fun AdminDbHealthCard(
             ) {
                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Cloud SQL Instance:", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        Text("${DatabaseConfig.host}:${DatabaseConfig.port}", color = OmnisCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("Primární Cloud Sync:", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text("Cloud Firestore + Outbox CQRS", color = OmnisEmerald, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Cílová databáze:", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        Text(DatabaseConfig.dbName, color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text("Čeká v Outbox frontě:", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text(
+                            text = "$pendingOutboxCount položek",
+                            color = if (pendingOutboxCount > 0) OmnisAmber else OmnisEmerald,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Uživatel / Režim:", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        Text("${DatabaseConfig.user} (Hybrid Zero-Latency)", color = OmnisEmerald, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text("Poslední synchronizace:", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text(formattedLastSync, color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Cloud SQL (volitelné):", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text(
+                            text = if (DatabaseConfig.isCloudSqlConfigured) "${DatabaseConfig.host}:${DatabaseConfig.port}" else "Neaktivní (Cost-Lock)",
+                            color = OmnisCyan,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
                 }
             }
@@ -164,7 +185,7 @@ fun AdminDbHealthCard(
             } else if (syncStatus is CloudSqlSyncManager.SyncStatus.Success && syncStatus.syncedCount > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "✓ Poslední dávka: synchronizováno ${syncStatus.syncedCount} zpráv do Cloud SQL.",
+                    text = "✓ Poslední dávka: synchronizováno ${syncStatus.syncedCount} záznamů.",
                     color = OmnisEmerald,
                     fontSize = 10.sp
                 )
@@ -198,7 +219,7 @@ fun AdminDbHealthCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isSyncing) "SYNCHRONIZUJI..." else "SPUSTIT LIVE SYNC",
+                        text = if (isSyncing) "SYNCHRONIZUJI..." else "VYNUTIT SYNC (SYNC NOW)",
                         color = Color.Black,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,

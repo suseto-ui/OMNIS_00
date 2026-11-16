@@ -43,6 +43,13 @@ class OmnisSettings(BaseSettings):
     )
     REQUIRE_APP_CHECK: bool = os.getenv("REQUIRE_APP_CHECK", "false").lower() in ("1", "true", "yes")
     OMNIS_SYNC_API_KEY: str = os.getenv("OMNIS_SYNC_API_KEY", "")
+    ENABLE_CLOUD_KMS: bool = os.getenv("ENABLE_CLOUD_KMS", "false").lower() in ("1", "true", "yes")
+    CLOUD_KMS_KEY_NAME: str = os.getenv("CLOUD_KMS_KEY_NAME", "")
+    ENABLE_FIRESTORE_CQRS_PROJECTION: bool = os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     @property
     def is_production(self) -> bool:
@@ -62,10 +69,14 @@ class OmnisSettings(BaseSettings):
         missing: List[str] = []
         if _is_missing_or_placeholder(self.SECRET_KEY):
             missing.append("SECRET_KEY")
-        if _is_missing_or_placeholder(self.DATABASE_URL):
-            missing.append("DATABASE_URL")
         if _is_missing_or_placeholder(self.AUDIT_HMAC_KEY):
             missing.append("AUDIT_HMAC_KEY")
+        if _is_missing_or_placeholder(self.OMNIS_SYNC_API_KEY):
+            missing.append("OMNIS_SYNC_API_KEY")
+        has_firestore = not _is_missing_or_placeholder(self.FIRESTORE_DATABASE_ID)
+        has_sql = not _is_missing_or_placeholder(self.DATABASE_URL)
+        if not has_firestore and not has_sql:
+            missing.append("DATABASE_URL or FIRESTORE_DATABASE_ID")
         if missing:
             raise RuntimeError(
                 f"CRITICAL STARTUP FAILURE: Missing required production secrets: {', '.join(missing)}"
@@ -87,6 +98,10 @@ def get_settings() -> OmnisSettings:
         ),
         REQUIRE_APP_CHECK=os.getenv("REQUIRE_APP_CHECK", "false").lower() in ("1", "true", "yes"),
         OMNIS_SYNC_API_KEY=os.getenv("OMNIS_SYNC_API_KEY", ""),
+        ENABLE_CLOUD_KMS=os.getenv("ENABLE_CLOUD_KMS", "false").lower() in ("1", "true", "yes"),
+        CLOUD_KMS_KEY_NAME=os.getenv("CLOUD_KMS_KEY_NAME", ""),
+        ENABLE_FIRESTORE_CQRS_PROJECTION=os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "true").lower()
+        in ("1", "true", "yes"),
     )
     settings.validate_production_secrets()
     return settings

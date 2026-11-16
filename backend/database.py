@@ -76,6 +76,11 @@ class _NullSessionFactory:
         return _MockSession()
 
 
+def is_mock_session(session: Any) -> bool:
+    """Vrací True, pokud SQLAlchemy běží bez připojené SQL databáze (Cloud Firestore primary režim)."""
+    return isinstance(session, _MockSession)
+
+
 engine = None
 async_session_factory = None
 

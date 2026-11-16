@@ -145,22 +145,26 @@ object RefusalLadderEngine {
         }
         evaluations.add(g3)
 
-        // --- G4: ISO/IEC 42001 AI Governance & Quotable Grounding ---
-        val g4 = if (lower.contains("vygeneruj fiktivní soudní rozhodnutí") || lower.contains("vyrob falešný důkaz")) {
+        // --- G4: ISO/IEC 42001 AI Governance & NIST SP 800-207 Zero Trust ---
+        val g4ZeroTrustViolation = lower.contains("vygeneruj fiktivní soudní rozhodnutí") ||
+            lower.contains("vyrob falešný důkaz") ||
+            lower.contains("disable zero trust") ||
+            lower.contains("bypass rbac audit")
+        val g4 = if (g4ZeroTrustViolation) {
             GateEvaluation(
                 gateId = GateId.G4,
                 status = GateStatus.REFUSED,
-                regulatoryNorm = "ISO/IEC 42001:2023, Článek 6.1 (Data & System Traceability)",
-                reason = "Požadavek na fabrikaci právních či faktických nepravdivých důkazů.",
-                quotableCitation = "ISO/IEC 42001, čl. 6.1: 'AI systém musí udržovat integritu a doložitelnost veškerých výstupních tvrzení.'",
-                remediationHint = "Zformulujte dotaz jako hypotetický model nebo analýzu existující judikatury."
+                regulatoryNorm = "ISO/IEC 42001:2023 Sec. 6.1 & NIST SP 800-207 (Zero Trust Governance)",
+                reason = "Požadavek narušuje integritu důkazů nebo principy Zero-Trust autorizace (NIST SP 800-207).",
+                quotableCitation = "ISO/IEC 42001, čl. 6.1 & NIST SP 800-207: 'Systém nesmí obcházet kontinuální verifikaci a musí udržovat doložitelnost výstupních tvrzení.'",
+                remediationHint = "Zformulujte dotaz jako hypotetický model či auditní analýzu při zachování RBAC."
             )
         } else {
             GateEvaluation(
                 gateId = GateId.G4,
                 status = GateStatus.PASSED,
-                regulatoryNorm = "ISO/IEC 42001 AI Governance",
-                reason = "Požadavek je v souladu s pravidly ověřitelnosti a transdisciplinárního ukotvení."
+                regulatoryNorm = "ISO/IEC 42001:2023 & NIST SP 800-207",
+                reason = "Požadavek je v souladu s pravidly ověřitelnosti (ISO/IEC 42001) a Zero Trust Architecture (NIST SP 800-207)."
             )
         }
         evaluations.add(g4)

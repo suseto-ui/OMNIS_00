@@ -92,7 +92,9 @@ data class AkgeKernelSnapshot(
     val quantumEntanglementIndex: Float = advancedMetrics.quantumEntanglementIndex,
     val latencyDriftMs: Float = advancedMetrics.latencyDriftMs.toFloat(),
     val selfHealingConfidence: Float = advancedMetrics.selfHealingConfidence,
-    val cognitiveAnomalyScore: Float = advancedMetrics.cognitiveAnomalyScore
+    val cognitiveAnomalyScore: Float = advancedMetrics.cognitiveAnomalyScore,
+    val cascadeRisk: com.example.ui.CascadeRiskAnalysis? = null,
+    val isolatedCsrNodes: Set<String> = emptySet()
 )
 
 /**
@@ -105,10 +107,24 @@ data class AkgeKernelSnapshot(
 object AkgeTensorKernel {
 
     val DOMAIN_KEYS = listOf("SYS", "ECON", "PSYCH", "ECO", "LAW", "SEC", "PHYS", "SOC")
+    private val DEFAULT_EDGES = listOf(
+        AkgeEdge("SYS", "SEC", 0.85f),
+        AkgeEdge("SEC", "LAW", 0.75f),
+        AkgeEdge("SYS", "PHYS", 0.80f),
+        AkgeEdge("ECON", "SYS", 0.60f),
+        AkgeEdge("ECO", "ECON", 0.65f),
+        AkgeEdge("PSYCH", "SOC", 0.70f),
+        AkgeEdge("SOC", "LAW", 0.65f),
+        AkgeEdge("SEC", "PHYS", 0.50f)
+    )
+    private val baselineCsrMatrix: AkgeCsrMatrix = buildCsrMatrix(DEFAULT_EDGES, DOMAIN_KEYS)
     val csrKnowledgeGraph: CsrKnowledgeGraph = CsrKnowledgeGraph.createDefaultGraph()
 
     private val _kernelState = MutableStateFlow(createDefaultSnapshot())
     val kernelState: StateFlow<AkgeKernelSnapshot> = _kernelState.asStateFlow()
+
+    private val _cognitiveAnomalyAlert = MutableStateFlow(false)
+    val cognitiveAnomalyAlert: StateFlow<Boolean> = _cognitiveAnomalyAlert.asStateFlow()
 
     fun computeAdvancedMetrics(
         weights: Map<String, Float>,
@@ -153,23 +169,13 @@ object AkgeTensorKernel {
             "PHYS" to 0.80f,
             "SOC" to 0.70f
         )
-        val defaultEdges = listOf(
-            AkgeEdge("SYS", "SEC", 0.85f),
-            AkgeEdge("SEC", "LAW", 0.75f),
-            AkgeEdge("SYS", "PHYS", 0.80f),
-            AkgeEdge("ECON", "SYS", 0.60f),
-            AkgeEdge("ECO", "ECON", 0.65f),
-            AkgeEdge("PSYCH", "SOC", 0.70f),
-            AkgeEdge("SOC", "LAW", 0.65f),
-            AkgeEdge("SEC", "PHYS", 0.50f)
-        )
-        val csr = buildCsrMatrix(defaultEdges, DOMAIN_KEYS)
+        val csr = baselineCsrMatrix
         val domainStatuses = initialWeights.mapValues { if (it.value >= 0.5f) "STABLE" else "STRESSED" }
 
         val topoMetrics = TopologicalInferenceEngine.evaluateTopologicalMetrics(
             domainScores = initialWeights,
             customNodesCount = 8,
-            customEdgesCount = defaultEdges.size,
+            customEdgesCount = DEFAULT_EDGES.size,
             customFacesCount = 4
         )
         val percolation = TopologicalInferenceEngine.evalCascadeRisk(domainStatuses)
@@ -379,7 +385,32 @@ object AkgeTensorKernel {
     }
 
     /**
-     * Provede hromadnou aktualizaci vah pro více domén najednou.
+     * Izoluje přetížené uzly (< 0.35f) v řídké CSR matici při překročení perkolačního prahu (p_c >= 0.38).
+     */
+    fun isolateStressedNodesInCsr(csr: AkgeCsrMatrix, stressedDomains: Set<String>): AkgeCsrMatrix {
+        if (stressedDomains.isEmpty()) return csr
+        val stressedIndices = DOMAIN_KEYS.withIndex()
+            .filter { stressedDomains.contains(it.value) }
+            .map { it.index }
+            .toSet()
+        if (stressedIndices.isEmpty()) return csr
+
+        val filteredValues = csr.values.copyOf()
+        for (row in 0 until csr.dimension) {
+            val start = csr.rowPointers[row]
+            val end = csr.rowPointers[row + 1]
+            for (k in start until end) {
+                val col = csr.columnIndices[k]
+                if (stressedIndices.contains(row) || stressedIndices.contains(col)) {
+                    filteredValues[k] = 0.0f
+                }
+            }
+        }
+        return csr.copy(values = filteredValues)
+    }
+
+    /**
+     * Provede hromadnou aktualizaci vah pro více domén najednou s telemetrickou fúzí perkolace.
      */
     fun updateDomainWeights(newWeightsMap: Map<String, Float>) {
         val current = _kernelState.value
@@ -388,13 +419,19 @@ object AkgeTensorKernel {
             updatedWeights[domain] = w.coerceIn(0.0f, 1.0f)
         }
 
-        val diffusedWeights = propagateTensorField(updatedWeights, current.csrMatrix)
+        val preCheckStressed = updatedWeights.filterValues { it < 0.35f }.keys
+        val diffusionTopology = if (preCheckStressed.size.toFloat() / DOMAIN_KEYS.size >= 0.38f) {
+            isolateStressedNodesInCsr(baselineCsrMatrix, preCheckStressed)
+        } else {
+            baselineCsrMatrix
+        }
+        val diffusedWeights = propagateTensorField(updatedWeights, diffusionTopology)
         val domainStatuses = diffusedWeights.mapValues { if (it.value >= 0.5f) "STABLE" else "STRESSED" }
 
         val topoMetrics = TopologicalInferenceEngine.evaluateTopologicalMetrics(
             domainScores = diffusedWeights,
             customNodesCount = 8,
-            customEdgesCount = current.csrMatrix.values.size / 2,
+            customEdgesCount = baselineCsrMatrix.values.size / 2,
             customFacesCount = 4
         )
         val percolation = TopologicalInferenceEngine.evalCascadeRisk(domainStatuses)
@@ -406,7 +443,6 @@ object AkgeTensorKernel {
             systemStressSigma = sigma
         )
 
-        // Centrální Intelligence Logování
         if (!topoResult.isPhase2Verified) {
             com.example.telemetry.TelemetryEngine.log(
                 type = "WARNING",
@@ -416,27 +452,50 @@ object AkgeTensorKernel {
             )
         }
 
-        val hash = computeStateCommitment(diffusedWeights, sigma, System.currentTimeMillis())
         val advanced = computeAdvancedMetrics(
             diffusedWeights,
             topoMetrics.shannonEntropy,
             if (percolation.isCascadeRiskActive) 450L else 18L
         )
+        val cascadeRisk = com.example.ui.OmnisCorrelationEngine.evaluateCascadeRiskWithTelemetry(
+            domainValues = diffusedWeights,
+            cognitiveAnomalyScore = advanced.cognitiveAnomalyScore,
+            quantumEntanglementIndex = advanced.quantumEntanglementIndex,
+            latencyDriftMs = advanced.latencyDriftMs.toFloat(),
+            selfHealingConfidence = advanced.selfHealingConfidence
+        )
+        val stressedNodes = if (cascadeRisk.isCascadeRiskActive || percolation.isCascadeRiskActive) {
+            diffusedWeights.filterValues { it < 0.35f }.keys
+        } else {
+            emptySet()
+        }
+        val effectiveCsr = isolateStressedNodesInCsr(baselineCsrMatrix, stressedNodes)
 
+        if (cascadeRisk.isCascadeRiskActive) {
+            com.example.telemetry.TelemetryEngine.log(
+                type = "WARNING",
+                component = "PERCOLATION_FUSION",
+                message = "${cascadeRisk.warningSummary} (Izolované uzly CSR: ${stressedNodes.ifEmpty { setOf("NONE") }})"
+            )
+        }
+
+        val hash = computeStateCommitment(diffusedWeights, sigma, System.currentTimeMillis())
         val nextSnapshot = AkgeKernelSnapshot(
             timestamp = System.currentTimeMillis(),
             domainWeights = diffusedWeights,
-            csrMatrix = current.csrMatrix,
+            csrMatrix = effectiveCsr,
             topologicalMetrics = topoMetrics,
             percolationStatus = percolation,
             systemStressSigma = sigma,
             stateCommitmentHash = hash,
-            activeAnomaliesCount = if (percolation.isCascadeRiskActive) 1 else 0,
-            advancedMetrics = advanced
+            activeAnomaliesCount = if (cascadeRisk.isCascadeRiskActive || percolation.isCascadeRiskActive) max(1, stressedNodes.size) else 0,
+            advancedMetrics = advanced,
+            cascadeRisk = cascadeRisk,
+            isolatedCsrNodes = stressedNodes
         )
         
-        // Synchronizace s korelačním enginem
         com.example.ui.OmnisCorrelationEngine.quantumEntanglementScale = nextSnapshot.quantumEntanglementIndex
+        _cognitiveAnomalyAlert.value = advanced.cognitiveAnomalyScore > 0.75f
         _kernelState.value = nextSnapshot
     }
 
@@ -448,7 +507,7 @@ object AkgeTensorKernel {
     }
 
     /**
-     * Injektuje poruchu (např. výpadek SEC a SYS) pro zátěžové testování kaskád.
+     * Injektuje poruchu (např. výpadek SEC a SYS) pro zátěžové testování kaskád a izolace CSR uzlů.
      */
     fun injectCascadeStress(affectedDomains: List<String>) {
         val current = _kernelState.value
@@ -468,33 +527,55 @@ object AkgeTensorKernel {
         val sigma = computeSystemStress(updatedWeights)
         val hash = computeStateCommitment(updatedWeights, sigma, System.currentTimeMillis())
         val advanced = computeAdvancedMetrics(updatedWeights, topoMetrics.shannonEntropy, 350L)
+        val cascadeRisk = com.example.ui.OmnisCorrelationEngine.evaluateCascadeRiskWithTelemetry(
+            domainValues = updatedWeights,
+            cognitiveAnomalyScore = advanced.cognitiveAnomalyScore,
+            quantumEntanglementIndex = advanced.quantumEntanglementIndex,
+            latencyDriftMs = advanced.latencyDriftMs.toFloat(),
+            selfHealingConfidence = advanced.selfHealingConfidence
+        )
+        val stressedNodes = if (cascadeRisk.isCascadeRiskActive || percolation.isCascadeRiskActive) {
+            updatedWeights.filterValues { it < 0.35f }.keys
+        } else {
+            emptySet()
+        }
+        val effectiveCsr = isolateStressedNodesInCsr(baselineCsrMatrix, stressedNodes)
+        _cognitiveAnomalyAlert.value = advanced.cognitiveAnomalyScore > 0.75f
 
         _kernelState.value = AkgeKernelSnapshot(
             timestamp = System.currentTimeMillis(),
             domainWeights = updatedWeights,
-            csrMatrix = current.csrMatrix,
+            csrMatrix = effectiveCsr,
             topologicalMetrics = topoMetrics,
             percolationStatus = percolation,
             systemStressSigma = sigma,
             stateCommitmentHash = hash,
             activeAnomaliesCount = percolation.failingDomains,
-            advancedMetrics = advanced
+            advancedMetrics = advanced,
+            cascadeRisk = cascadeRisk,
+            isolatedCsrNodes = stressedNodes
         )
     }
 
     /**
      * Asynchronní varianta aktualizace vah izolovaná na Dispatchers.Default (60/120 FPS UI safe).
      */
-    suspend fun updateDomainWeightsAsync(newWeightsMap: Map<String, Float>) =
-        withContext(Dispatchers.Default) {
+    suspend fun updateDomainWeightsAsync(
+        newWeightsMap: Map<String, Float>,
+        dispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
+    ) =
+        withContext(dispatcher) {
             updateDomainWeights(newWeightsMap)
         }
 
     /**
      * Asynchronní injekce kaskádového stresu izolovaná na Dispatchers.Default.
      */
-    suspend fun injectCascadeStressAsync(affectedDomains: List<String>) =
-        withContext(Dispatchers.Default) {
+    suspend fun injectCascadeStressAsync(
+        affectedDomains: List<String>,
+        dispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
+    ) =
+        withContext(dispatcher) {
             injectCascadeStress(affectedDomains)
         }
 
@@ -502,6 +583,7 @@ object AkgeTensorKernel {
      * Resetuje kernel na výchozí nominální stav.
      */
     fun resetToEquilibrium() {
+        _cognitiveAnomalyAlert.value = false
         _kernelState.value = createDefaultSnapshot()
     }
 }

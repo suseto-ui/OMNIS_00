@@ -15,16 +15,15 @@ provider "google" {
 
 # 1. Aktivace základních Google Cloud API
 resource "google_project_service" "enabled_apis" {
-  for_each = toset([
+  for_each = toset(concat([
     "run.googleapis.com",
     "secretmanager.googleapis.com",
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
     "firestore.googleapis.com",
-    "sqladmin.googleapis.com",
     "iam.googleapis.com",
     "billingbudgets.googleapis.com"
-  ])
+  ], var.enable_cloud_sql ? ["sqladmin.googleapis.com"] : [], var.enable_cloud_kms ? ["cloudkms.googleapis.com"] : []))
   project            = var.project_id
   service            = each.key
   disable_on_destroy = false
@@ -35,7 +34,7 @@ resource "google_artifact_registry_repository" "omnis_repo" {
   depends_on    = [google_project_service.enabled_apis]
   location      = var.region
   repository_id = "omnis-repo"
-  description   = "Docker repozitar pro O.M.N.I.S. backend a web"
+  description   = "Docker repozitar pro O.M.N.I.S. FastAPI backend"
   format        = "DOCKER"
 }
 
@@ -51,6 +50,14 @@ resource "google_secret_manager_secret" "database_url" {
 resource "google_secret_manager_secret" "jwt_secret" {
   depends_on = [google_project_service.enabled_apis]
   secret_id  = "JWT_SECRET_KEY"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret" "audit_hmac_key" {
+  depends_on = [google_project_service.enabled_apis]
+  secret_id  = "AUDIT_HMAC_KEY"
   replication {
     auto {}
   }
@@ -88,26 +95,27 @@ resource "google_secret_manager_secret" "admin_secret_hashes" {
   }
 }
 
-# 4. Google Cloud Run (Cost-Optimized: Scale-to-Zero = 0 USD idle)
+# 4. Google Cloud Run (Cost-Optimized: Scale-to-Zero = 0 USD idle, Firestore Primary)
 resource "google_cloud_run_v2_service" "omnis_backend" {
   depends_on = [
     google_project_service.enabled_apis,
     google_artifact_registry_repository.omnis_repo,
     google_secret_manager_secret.database_url,
     google_secret_manager_secret.jwt_secret,
+    google_secret_manager_secret.audit_hmac_key,
     google_secret_manager_secret.google_client_id,
     google_secret_manager_secret.gemini_api_key,
     google_secret_manager_secret.sync_api_key,
     google_secret_manager_secret.admin_secret_hashes,
-    google_project_iam_member.cloud_run_secret_accessor
+    google_secret_manager_secret_iam_member.cloud_run_secret_access
   ]
   name     = "omnis-backend"
   location = var.region
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
-    service_account = "omnis-cloud-run@${var.project_id}.iam.gserviceaccount.com"
-    
+    service_account = google_service_account.cloud_run_sa.email
+
     scaling {
       min_instance_count = 0  # 100% Scale-to-zero pro nulové fixní náklady
       max_instance_count = 3  # Prevence přetečení rozpočtu
@@ -125,6 +133,14 @@ resource "google_cloud_run_v2_service" "omnis_backend" {
       }
 
       env {
+        name  = "ENV"
+        value = "production"
+      }
+      env {
+        name  = "REQUIRE_APP_CHECK"
+        value = "true"
+      }
+      env {
         name  = "PROJECT_ID"
         value = var.project_id
       }
@@ -138,17 +154,38 @@ resource "google_cloud_run_v2_service" "omnis_backend" {
       }
       env {
         name  = "FIREBASE_PROJECT_ID"
-        value = var.project_id
+        value = var.firebase_project_id != "" ? var.firebase_project_id : var.project_id
       }
       env {
         name  = "FIRESTORE_DATABASE_ID"
-        value = "ai-studio-android-omnis-fba4ba28-3ec2-4eaf-a1a7-338554af8dfe"
+        value = var.firestore_database_id
+      }
+      env {
+        name  = "ENABLE_FIRESTORE_CQRS_PROJECTION"
+        value = "true"
+      }
+      env {
+        name  = "ENABLE_CLOUD_KMS"
+        value = tostring(var.enable_cloud_kms)
+      }
+      env {
+        name  = "CLOUD_KMS_KEY_NAME"
+        value = var.cloud_kms_key_name
       }
       env {
         name = "SECRET_KEY"
         value_source {
           secret_key_ref {
             secret  = google_secret_manager_secret.jwt_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name = "AUDIT_HMAC_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.audit_hmac_key.secret_id
             version = "latest"
           }
         }
@@ -171,12 +208,15 @@ resource "google_cloud_run_v2_service" "omnis_backend" {
           }
         }
       }
-      env {
-        name = "DATABASE_URL"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.database_url.secret_id
-            version = "latest"
+      dynamic "env" {
+        for_each = var.enable_cloud_sql ? [1] : []
+        content {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.database_url.secret_id
+              version = "latest"
+            }
           }
         }
       }

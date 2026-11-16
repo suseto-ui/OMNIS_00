@@ -7,9 +7,9 @@
 # 3. Vytvoření Artifact Registry repozitáře
 # 4. Konfigurace Service Accountů (Zero-Trust IAM pro Cloud Run a Cloud Build)
 # 5. Inicializace a garance verzí v Secret Manageru (Zero-Crash ochrana pro Cloud Run)
-# 6. Spuštění Cloud Build pipeline (sestavení multi-stage Dockeru s React SPA a FastAPI)
+# 6. Spuštění Cloud Build pipeline (sestavení multi-stage Dockeru s Python 3.11 FastAPI)
 # 7. Nasazení na Google Cloud Run (Free Tier optimalizováno: 0 USD v nečinnosti)
-# 8. Živý integrační smoke test (/healthz, /api/v1/health, SPA index)
+# 8. Živý integrační smoke test (/healthz, /api/v1/health, /openapi.json)
 # 9. Výpis produkčních URL a konfigurace pro Android klienta
 # ==============================================================================
 
@@ -37,8 +37,8 @@ BILLING_ACCOUNT_ID=""
 AUTO_APPROVE="false"
 SERVICE_NAME="omnis-backend"
 REPOSITORY_NAME="omnis-repo"
-FIREBASE_PROJECT_ID="gen-lang-client-0328950802"
-FIRESTORE_DATABASE_ID="ai-studio-android-omnis-fba4ba28-3ec2-4eaf-a1a7-338554af8dfe"
+FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-gen-lang-client-0328950802}"
+FIRESTORE_DATABASE_ID="${FIRESTORE_DATABASE_ID:-ai-studio-android-omnis-fba4ba28-3ec2-4eaf-a1a7-338554af8dfe}"
 CLOUDSQL_INSTANCE=""
 CUSTOM_GEMINI_KEY=""
 CUSTOM_DB_URL=""
@@ -48,6 +48,14 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --project=*)
       PROJECT_ID="${1#*=}"
+      shift
+      ;;
+    --firebase-project=*)
+      FIREBASE_PROJECT_ID="${1#*=}"
+      shift
+      ;;
+    --firestore-db=*)
+      FIRESTORE_DATABASE_ID="${1#*=}"
       shift
       ;;
     --region=*)
@@ -83,12 +91,14 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Možnosti:"
       echo "  --project=<ID>             Google Cloud Project ID"
+      echo "  --firebase-project=<ID>    Volitelné oddělené Firebase Project ID"
+      echo "  --firestore-db=<ID>        Identifikátor pojmenované Firestore databáze"
       echo "  --region=<REGION>          GCP region (výchozí: europe-west1)"
       echo "  --billing-account=<ID>     Billing Account ID pro nastavení rozpočtového limitu 5 USD"
       echo "  --gemini-key=<KEY>         GEMINI_API_KEY pro uložení do Secret Manageru"
-      echo "  --db-url=<URL>             PostgreSQL / Cloud SQL DATABASE_URL"
+      echo "  --db-url=<URL>             Volitelná PostgreSQL / Cloud SQL DATABASE_URL"
       echo "  --google-client-id=<ID>    OAuth 2.0 Web Client ID pro GOOGLE_CLIENT_ID"
-      echo "  --cloudsql-instance=<NAME> Název Cloud SQL instance k navázání na Cloud Run"
+      echo "  --cloudsql-instance=<NAME> Volitelný název Cloud SQL instance k navázání na Cloud Run"
       echo "  -y, --yes, --auto-approve  Automatické potvrzení bez interaktivních dotazů"
       echo "  -h, --help                 Zobrazí tuto nápovědu"
       exit 0
@@ -269,6 +279,7 @@ echo -e "${BLUE}=== [4/8] Správa tajemství v Google Cloud Secret Manageru ===$
 
 ALL_SECRETS=(
   JWT_SECRET_KEY
+  AUDIT_HMAC_KEY
   OMNIS_SYNC_API_KEY
   GOOGLE_CLIENT_ID
   GEMINI_API_KEY
@@ -301,6 +312,18 @@ if ! gcloud secrets versions access latest --secret="JWT_SECRET_KEY" &>/dev/null
   set_secret_version "JWT_SECRET_KEY" "$VAL"
 else
   echo "  [✓] JWT_SECRET_KEY má aktivní verzi."
+fi
+
+# 1b. AUDIT_HMAC_KEY
+if ! gcloud secrets versions access latest --secret="AUDIT_HMAC_KEY" &>/dev/null; then
+  VAL="${AUDIT_HMAC_KEY:-}"
+  if [ -z "$VAL" ]; then
+    VAL="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+    echo -e "  ${GREEN}✓ Vygenerován kryptografický podpisový klíč pro AUDIT_HMAC_KEY.${NC}"
+  fi
+  set_secret_version "AUDIT_HMAC_KEY" "$VAL"
+else
+  echo "  [✓] AUDIT_HMAC_KEY má aktivní verzi."
 fi
 
 # 2. OMNIS_SYNC_API_KEY
@@ -401,7 +424,7 @@ fi
 # 7. Sestavení kontejneru a nasazení přes Cloud Build
 # ------------------------------------------------------------------------------
 echo ""
-echo -e "${BLUE}=== [6/8] Spouštím Google Cloud Build (Multi-stage Docker + React + FastAPI) ===${NC}"
+echo -e "${BLUE}=== [6/8] Spouštím Google Cloud Build (Multi-stage Docker + Python FastAPI) ===${NC}"
 
 BUILD_TAG="$(git rev-parse --short HEAD 2>/dev/null || date +%s)"
 echo "Build Tag: ${BUILD_TAG}"
@@ -432,7 +455,7 @@ if [ -z "$SERVICE_URL" ]; then
 fi
 
 echo -e "Nasazená služba: ${BOLD}${CYAN}${SERVICE_URL}${NC}"
-echo "Ověřuji dostupnost backendu a frontendu..."
+echo "Ověřuji dostupnost FastAPI backendu..."
 
 HEALTHZ_CODE="000"
 for attempt in 1 2 3 4 5; do
@@ -457,12 +480,12 @@ else
   echo -e "  ${YELLOW}[VAROVÁNÍ] /api/v1/health vrátil kód ${API_HEALTH_CODE}${NC}"
 fi
 
-# Test SPA index.html
-SPA_CODE="$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/" || true)"
-if [ "$SPA_CODE" = "200" ]; then
-  echo -e "  [OK] / (SPA Frontend) vrátil HTTP 200 (React aplikace se načítá)."
+# Test /openapi.json
+OPENAPI_CODE="$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/openapi.json" || true)"
+if [ "$OPENAPI_CODE" = "200" ]; then
+  echo -e "  [OK] /openapi.json vrátil HTTP 200 (OpenAPI specifikace FastAPI je dostupná)."
 else
-  echo -e "  ${YELLOW}[VAROVÁNÍ] Root / vrátil kód ${SPA_CODE}${NC}"
+  echo -e "  ${YELLOW}[VAROVÁNÍ] /openapi.json vrátil kód ${OPENAPI_CODE}${NC}"
 fi
 
 # ------------------------------------------------------------------------------
@@ -473,12 +496,13 @@ echo -e "${CYAN}================================================================
 echo -e "${BOLD}${GREEN}        ✓ O.M.N.I.S. JE ÚSPĚŠNĚ ZPROVOZNĚN V GOOGLE CLOUD!        ${NC}"
 echo -e "${CYAN}================================================================================${NC}"
 echo ""
-echo -e "🌐 ${BOLD}Webový Dashboard & API Gateway:${NC}"
+echo -e "🌐 ${BOLD}FastAPI Backend & API Gateway:${NC}"
 echo -e "   ${BOLD}${CYAN}${SERVICE_URL}${NC}"
 echo ""
-echo -e "📱 ${BOLD}Propojení s Android aplikací:${NC}"
+echo -e "📱 ${BOLD}Propojení s Android aplikací (Release AAB & Debug APK):${NC}"
 echo "   Nastavte proměnnou OMNIS_BACKEND_URL v Secrets panelu AI Studio nebo ji předejte při buildu:"
-echo -e "   ${YELLOW}gradle assembleDebug -POMNIS_BACKEND_URL=${SERVICE_URL}${NC}"
+echo -e "   ${YELLOW}gradle :app:bundleRelease -POMNIS_BACKEND_URL=${SERVICE_URL}${NC}"
+echo -e "   ${YELLOW}gradle :app:assembleDebug -POMNIS_BACKEND_URL=${SERVICE_URL}${NC}"
 echo "   případně exportujte proměnnou prostředí:"
 echo -e "   ${YELLOW}export OMNIS_BACKEND_URL=${SERVICE_URL}${NC}"
 echo ""

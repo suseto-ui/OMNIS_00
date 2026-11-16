@@ -181,7 +181,12 @@ class GateEvaluationResult(BaseModel):
             passport = {
                 "@context": "https://schema.org/omnis-compliance-v1.jsonld",
                 "@type": "AiCompliancePassport",
-                "frameworks": ["EU_AI_ACT_HIGH_RISK_ANNEX_IV", "NIS2_DIRECTIVE_ART_21"],
+                "frameworks": [
+                    "EU_AI_ACT_2024_1689_ANNEX_IV",
+                    "NIS2_DIRECTIVE_2022_2555_ART_21",
+                    "ISO_IEC_42001:2023",
+                    "NIST_SP_800_207",
+                ],
                 "gate_status": {
                     "G1": self.g1_entry_point,
                     "G2": self.g2_concept_coupling,
@@ -215,6 +220,8 @@ class CryptographicAuditCommitment(BaseModel):
     algorithm: str = Field(default="HMAC-SHA256-HASH-CHAIN", description="Použitý kryptografický algoritmus")
     hmac_key: Optional[str] = Field(default=None, exclude=True, repr=False)
     commitment_hash: str = Field(default="", description="Výsledný kryptografický otisk")
+    kms_key_version: Optional[str] = Field(default=None, description="Volitelná verze klíče Cloud KMS ECDSA P-256")
+    kms_signature_b64: Optional[str] = Field(default=None, description="Volitelný Base64 podpis z Google Cloud KMS")
     timestamp: int = Field(default_factory=lambda: int(datetime.now(timezone.utc).timestamp() * 1000))
 
     @model_validator(mode="after")
@@ -251,6 +258,17 @@ class CryptographicAuditCommitment(BaseModel):
 
         object.__setattr__(self, "commitment_hash", digest)
         object.__setattr__(self, "algorithm", algo)
+
+        if self.kms_signature_b64 is None:
+            try:
+                from backend.security.kms_signer import sign_audit_digest_with_kms
+
+                kms_env = sign_audit_digest_with_kms(digest)
+                if kms_env.kms_signed:
+                    object.__setattr__(self, "kms_key_version", kms_env.kms_key_version)
+                    object.__setattr__(self, "kms_signature_b64", kms_env.kms_signature_b64)
+            except Exception:
+                pass
         return self
 
     @classmethod

@@ -73,8 +73,10 @@ object OmnisAuthService {
         if (session != null) {
             _currentSession.value = session
             _currentUserRole.value = session.role
-            _isAuthenticated.value = false
+            _isAuthenticated.value = true
         } else {
+            _currentSession.value = null
+            _currentUserRole.value = UserRole.STANDARD_USER
             _isAuthenticated.value = false
         }
 
@@ -188,6 +190,9 @@ object OmnisAuthService {
 
     @androidx.annotation.VisibleForTesting
     fun setRoleForTesting(role: UserRole) {
+        if (!com.example.BuildConfig.DEBUG && !com.example.data.DatabaseConfig.isTesting) {
+            throw SecurityException("setRoleForTesting is strictly prohibited in release builds")
+        }
         _currentUserRole.value = role
         _isAuthenticated.value = true
     }

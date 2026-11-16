@@ -38,6 +38,8 @@ fun AdminHubView(
     selfHealingLogs: List<String> = emptyList(),
     onTriggerHealing: () -> Unit = {},
     syncStatus: com.example.data.CloudSqlSyncManager.SyncStatus = com.example.data.CloudSqlSyncManager.SyncStatus.Idle,
+    pendingOutboxCount: Int = 0,
+    lastOutboxSyncTimestamp: Long? = null,
     onSyncCloudSql: () -> Unit = {},
     onTestCloudSqlConnection: () -> Unit = {},
     onTestProtectedApi: (withoutToken: Boolean, adminPath: Boolean) -> Unit = { _, _ -> }
@@ -104,6 +106,8 @@ fun AdminHubView(
                                 postgresSyncedCount = postgresSyncedCount,
                                 unSyncedCount = unSyncedCount,
                                 syncStatus = syncStatus,
+                                pendingOutboxCount = pendingOutboxCount,
+                                lastOutboxSyncTimestamp = lastOutboxSyncTimestamp,
                                 onSyncNow = onSyncCloudSql,
                                 onTestConnection = onTestCloudSqlConnection
                             )

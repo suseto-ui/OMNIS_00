@@ -25,14 +25,15 @@ android {
         val omnisBackendUrl = (
             project.findProperty("OMNIS_BACKEND_URL")?.toString()
                 ?: System.getenv("OMNIS_BACKEND_URL")
-                ?: "https://ais-dev-ex6yxewfd4hwymxojrmgxr-291037164760.europe-west3.run.app"
+                ?: "https://ais-dev-43vgrwdupsfj4ht5yohxcz-291037164760.europe-west3.run.app"
             ).trimEnd('/')
         buildConfigField("String", "OMNIS_BACKEND_URL", "\"$omnisBackendUrl\"")
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

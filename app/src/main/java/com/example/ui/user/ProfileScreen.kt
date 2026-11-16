@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -202,7 +203,7 @@ fun ProfileScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252).copy(alpha = 0.2f)),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252))
                 ) {
-                    Icon(Icons.Default.ExitToApp, contentDescription = null, tint = Color(0xFFFF5252))
+                    Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = Color(0xFFFF5252))
                     Spacer(Modifier.width(8.dp))
                     Text("ODHLÁSIT SE ZE SYSTÉMU", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
                 }
@@ -216,6 +217,6 @@ private fun ProfileInfoItem(label: String, value: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(text = label, color = OmnisTextMuted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         Text(text = value, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        Divider(color = OmnisBorderDark.copy(alpha = 0.5f), modifier = Modifier.padding(top = 8.dp))
+        HorizontalDivider(color = OmnisBorderDark.copy(alpha = 0.5f), modifier = Modifier.padding(top = 8.dp))
     }
 }

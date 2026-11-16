@@ -12,9 +12,9 @@ graph TD
     VM -->|1. Interceptor & Sanitizace| APEX[APEX Master Orchestrator & Scratchpad]
     APEX -->|2. Tenzorový Výpočet 8D| AKGE[AKGE-8D Tensor Kernel]
     APEX -->|3. 64D RAG Vyhledávání| RAG[64D Vector RAG Memory & Room v18]
-    APEX -->|4. ZK-Proof & Inherence| API[Gemini API / Firebase AI Logic]
+    APEX -->|4. HMAC-SHA256 & Inference| API[Gemini API / Firebase AI Logic]
     API -->|5. Zero-Fluff Sanitizace| VAL[Unified Response Evaluator Q_omnis]
-    VAL -->|6. 3-Vrstvá Perzistence| DB[Room SQLite -> Firestore -> PostgreSQL pgvector]
+    VAL -->|6. 3-Vrstvá Perzistence| DB[Room SQLite v18 -> Firestore Primary -> PostgreSQL pgvector (Volitelné)]
     
     subgraph Kognitivní Bezpečnostní Perimetr
         APEX
@@ -39,8 +39,8 @@ graph TD
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                       KOGNITIVNÍ A AUDITNÍ RÁMEC (AKGE-8D)                      │
 │  ┌──────────────────────┐  ┌──────────────────────┐  ┌────────────────────────┐ │
-│  │ Refusal Ladder G1-G6 │  │ 8D Tensor Kernel     │  │ ZK Audit Ledger        │ │
-│  │ (Zero-Hallucination) │  │ (Harmonická matice)  │  │ (SHA-256 Commitments)  │ │
+│  │ Refusal Ladder G1-G6 │  │ 8D Tensor Kernel     │  │ HMAC-SHA256 Audit      │ │
+│  │ (Zero-Hallucination) │  │ (Harmonická matice)  │  │ (Hash-Chain Pečetě)    │ │
 │  └──────────────────────┘  └──────────────────────┘  └────────────────────────┘ │
 └────────────────────┬────────────────────────────────────────────────────────────┘
                      │
@@ -48,8 +48,8 @@ graph TD
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                     PERSISTENCE & CLOUD SYNCHRONIZACE                           │
 │  ┌──────────────────────────────────┐        ┌───────────────────────────────┐  │
-│  │ Room Database v18 (SQLite)       │ ─────► │ Cloud SQL PostgreSQL          │  │
-│  │ (Offline-First Šifrovaná Paměť)  │        │ (pgvector Dual-Write Replikace)│  │
+│  │ Room v18 + SQLCipher + Outbox    │ ─────► │ Cloud Firestore (Primární)    │  │
+│  │ (Offline-First Šifrovaná Paměť)  │        │ + Cloud SQL pgvector (Volit.) │  │
 │  └──────────────────────────────────┘        └───────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -165,22 +165,28 @@ Aplikace striktně odlišuje uživatelský zážitek podle aktivní role:
 | Vrstva | Technologie | Popis |
 | :--- | :--- | :--- |
 | **Presentation (UI)** | Jetpack Compose (M3) | 8D Canvas Radar, Octagon Dashboard, Timeline Chat, Reaktivní grafy |
-| **Domain Logic** | Kotlin 2.0 Coroutines | `OmnisCorrelationEngine`, `OmnisConfidenceGate`, 6-tier Refusal Ladder |
-| **Backend & Graph** | Python FastAPI / CSR Graph | `CsrKnowledgeGraph`, Do-Calculus simulator, 8D Tensor Evaluator |
-| **Persistence** | Room DB v18 & SQLite | Offline-first šifrovaná vektorová a relakční paměť s multi-threadingem |
-| **API & Kaskáda** | Gemini Flash / Pro REST API | Multi-key pool rotace, asynchronní streaming SSE odpovědí, failover |
-| **Cloud Sync** | PostgreSQL (pgvector) / Firestore | Asynchronní dávková replikace zpráv, telemetrie a HMAC-SHA256 auditních stop |
+| **Domain Logic** | Kotlin 2.0 Coroutines | `OmnisCorrelationEngine`, `AkgeTensorKernel` (perkolace $p_c \ge 0.38$), `HybridInferenceOrchestrator` (>= 4 GB RAM, 1500 ms limit) |
+| **Backend & Graph** | Python FastAPI / CSR Graph | `CsrKnowledgeGraph`, Do-Calculus simulátor, `Q_omnis` validátor, volitelný Cloud KMS ECDSA P-256 podpis |
+| **Persistence** | Room DB v18 & SQLCipher | Offline-first šifrovaná vektorová a relační paměť s Transactional Outbox frontou (`omnis_sync_outbox`) |
+| **API & Kaskáda** | Gemini Flash / Pro REST API | Multi-key pool rotace, asynchronní streaming SSE odpovědí, Play-Policy-compliant failover |
+| **Cloud Sync** | Cloud Firestore (Primární) + pgvector (Volit.) | CQRS projekce a idempotentní `/api/v1/sync/batch`, rozpočtový zámek < 5 USD (`enable_cloud_sql = false`) |
 
 ---
 
-## 🚀 6. Příkazy pro Sestavení a Verifikaci
+## 🚀 6. Příkazy pro Sestavení a Verifikaci (CI/CD: `omnis-ci.yml`)
 
 ```bash
-# Spuštění kompletní sady 207 unit a Robolectric testů
-gradle :app:testDebugUnitTest
+# 1. Backend testy & Quality Gate
+python3 -m py_compile $(find backend scripts -name "*.py")
+PYTHONPATH=. python3 backend/run_backend_audit_tests.py
+python3 scripts/verify_quality_gate.py
 
-# Sestavení finálního debug balíčku aplikace
-gradle :app:assembleDebug
+# 2. Firestore Zero-Trust Security Rules
+FIRESTORE_EMULATOR_HOST="127.0.0.1:8085" node --test firestore.test.js
+
+# 3. Android Unit & Robolectric testy + produkční Release AAB (R8 minifikace aktivní)
+gradle :app:testDebugUnitTest
+gradle :app:bundleRelease
 ```
 
 ---

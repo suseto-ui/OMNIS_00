@@ -27,7 +27,7 @@ data class OfflineSimulationResult(
 /**
  * 3-fázový Circuit Breaker pro garantovanou 100% dostupnost bez výpadků.
  * Při HTTP 429 nebo výpadku sítě přepne na lokální deterministickou simulaci
- * nad Room SQLite v12 s označením [OFFLINE SIMULACE].
+ * nad šifrovanou Room SQLite v18 s označením [OFFLINE SIMULACE].
  */
 object OmnisCircuitBreaker {
 
@@ -90,7 +90,7 @@ object OmnisCircuitBreaker {
     }
 
     /**
-     * Provede deterministickou offline simulaci nad Room SQLite v12
+     * Provede deterministickou offline simulaci nad šifrovanou Room SQLite v18
      * s využitím tabulek omnis_messages a omnis_memory_fragments.
      */
     suspend fun executeOfflineSimulation(

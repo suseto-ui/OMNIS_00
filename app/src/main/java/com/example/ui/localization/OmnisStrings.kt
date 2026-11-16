@@ -87,7 +87,7 @@ object OmnisStrings {
     // BOČNÍ MENU (DRAWER)
     // ==========================================
     fun drawerHeaderSubtitle(lang: AppLanguage = currentLang) =
-        if (lang == AppLanguage.EN) "Cognitive Governance v2.7" else "Kognitivní Řízení v2.7"
+        if (lang == AppLanguage.EN) "O.M.N.I.S. APEX v4.5 Governance" else "O.M.N.I.S. APEX v4.5 Řízení"
     fun drawerSectionConversation(lang: AppLanguage = currentLang) =
         if (lang == AppLanguage.EN) "CONVERSATION MODULES" else "KONVERZAČNÍ PRVKY"
     fun drawerSectionInfo(lang: AppLanguage = currentLang) =

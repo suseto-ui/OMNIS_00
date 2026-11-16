@@ -11,7 +11,7 @@ object DatabaseConfig {
     var forceTesting: Boolean = false
 
     val isTesting: Boolean
-        get() = forceTesting || try {
+        get() = (com.example.BuildConfig.DEBUG && forceTesting) || try {
             Class.forName("org.junit.Test")
             val vendor = System.getProperty("java.vendor") ?: ""
             val isAndroid = vendor.contains("Android", ignoreCase = true)

@@ -147,6 +147,35 @@ class OmnisRepository(
         }
     }
 
+    val pendingOutboxCount: Flow<Int> = outboxDao?.observePendingCount() ?: kotlinx.coroutines.flow.flowOf(0)
+
+    val lastOutboxSyncTimestamp: Flow<Long?> = outboxDao?.observeLastSyncedTimestamp() ?: kotlinx.coroutines.flow.flowOf(null)
+
+    suspend fun flushOutboxNow(): Pair<Int, String> {
+        val activeOutbox = outboxDao ?: return Pair(0, "Outbox fronta není inicializována.")
+        var totalSynced = 0
+        var lastMessage = "Outbox fronta je prázdná."
+        while (true) {
+            val pending = activeOutbox.getPendingEntries(limit = 250)
+            if (pending.isEmpty()) break
+            val (syncedCount, msg) = com.example.data.sync.OmnisApiGatewayClient.syncOutboxBatchToGateway(pending)
+            lastMessage = msg
+            if (syncedCount <= 0) {
+                pending.forEach { entry -> activeOutbox.markFailed(entry.id, msg.take(250)) }
+                break
+            }
+            val completed = pending.take(syncedCount)
+            activeOutbox.markSynced(completed.map { it.id })
+            val messageIds = completed.filter { it.entityType == "OMNIS_MESSAGE" && it.entityId > 0L }.map { it.entityId }
+            if (messageIds.isNotEmpty()) {
+                dao.markRecordsAsSynced(messageIds)
+            }
+            totalSynced += completed.size
+            if (pending.size < 250) break
+        }
+        return Pair(totalSynced, lastMessage)
+    }
+
     suspend fun deleteThread(threadId: String) = dao.deleteThread(threadId)
 
     suspend fun updateThreadTitle(threadId: String, newTitle: String) = dao.updateThreadTitle(threadId, newTitle)

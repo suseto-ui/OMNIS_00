@@ -35,6 +35,9 @@ object AkgeInterceptor {
         val kernelState = AkgeTensorKernel.kernelState.value
         val sigma = kernelState.systemStressSigma
         val entropy = kernelState.topologicalMetrics.shannonEntropy
+        val cascadeActive = kernelState.percolationStatus.isCascadeRiskActive ||
+            (kernelState.cascadeRisk?.isCascadeRiskActive == true)
+        val anomalyScore = kernelState.advancedMetrics.cognitiveAnomalyScore
 
         // 1. Kontrola Circuit Breakeru
         val circuitState = OmnisCircuitBreaker.getCurrentState()
@@ -52,7 +55,7 @@ object AkgeInterceptor {
 
         // 2. Sémantická cache (práh shody > 0.95f)
         val cached = OmnisSemanticCache.findMatch(prompt, domain, userMode)
-        if (cached != null) {
+        if (cached != null && !cascadeActive) {
             TelemetryEngine.log(
                 type = "INFO",
                 component = "AKGE_INTERCEPTOR",
@@ -68,11 +71,19 @@ object AkgeInterceptor {
             )
         }
 
-        // 3. Výpočet komprese tokenového rozpočtu f(sigma)
+        // 3. Výpočet komprese tokenového rozpočtu f(sigma) + Perkolace (pc >= 0.38 => FULL_FORENSIC 0%)
         val compressionRate = when {
-            sigma < 0.20f -> 0.70f // Nízké pnutí: až 70% komprese pro rutinní dotazy
-            sigma < 0.60f -> 0.30f // Střední pnutí: 30% komprese
-            else -> 0.00f          // Vysoké pnutí: Plný forenzní rozpočet s 0% kompresí
+            cascadeActive || sigma >= 0.60f -> 0.00f // Perkolace / vysoké pnutí: Plný forenzní rozpočet s 0% kompresí
+            sigma < 0.20f -> 0.70f                    // Nízké pnutí: až 70% komprese pro rutinní dotazy
+            else -> 0.30f                             // Střední pnutí: 30% komprese
+        }
+
+        if (anomalyScore > 0.75f) {
+            TelemetryEngine.log(
+                type = "SECURITY",
+                component = "AKGE_TELEMETRY_FUSION",
+                message = "Kritická kognitivní anomálie (${String.format(java.util.Locale.US, "%.2f", anomalyScore)} > 0.75): Vyžadována kontrola ADMIN_OPERATOR Executive Override (MODIFY_SYSTEM_STATE)."
+            )
         }
 
         // 4. Vyhodnocení 6-Gate Refusal Ladderu
@@ -101,13 +112,14 @@ object AkgeInterceptor {
             )
         }
 
+        val anomalyNote = if (anomalyScore > 0.75f) " [ANOMALY_ALERT: Executive Override review]" else ""
         return InterceptionResult(
             isProceedAllowed = true,
             tokenCompressionRate = compressionRate,
             isCacheHit = false,
             refusalVerdict = verdict,
             executionMode = "CLOUD_INFERENCE",
-            diagnosticNote = "Všechny brány G1-G6 schváleny. Komprese tokenů: ${(compressionRate * 100).toInt()}%."
+            diagnosticNote = "Všechny brány G1-G6 schváleny. Komprese tokenů: ${(compressionRate * 100).toInt()}%.$anomalyNote"
         )
     }
 }

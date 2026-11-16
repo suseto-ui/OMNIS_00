@@ -43,6 +43,9 @@ class AuthenticationManager(
         roleRequested: UserRole
     ): AuthResult {
         val sanitizedUser = sanitizeInput(username) ?: return AuthResult.Failure("Uživatelské jméno nesmí být prázdné.")
+        if (!com.example.BuildConfig.DEBUG && !com.example.data.DatabaseConfig.isTesting && roleRequested == UserRole.ADMIN_OPERATOR) {
+            return AuthResult.Failure("Role ADMIN_OPERATOR vyžaduje produkční ověření backendem / Google Sign-In.")
+        }
         val strategy = strategyRegistry.getStrategy(roleRequested)
 
         if (!validateCredentialsWithStrategy(strategy, secret)) {
@@ -77,7 +80,11 @@ class AuthenticationManager(
     fun restoreSession(context: Context): AuthSession? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val encryptedToken = com.example.security.OmnisSecureStorage.decryptAndRetrieve(context, KEY_TOKEN)
-        val token = encryptedToken ?: prefs.getString(KEY_TOKEN, null) ?: return null
+        val token = encryptedToken ?: if (com.example.BuildConfig.DEBUG || com.example.data.DatabaseConfig.isTesting) {
+            prefs.getString(KEY_TOKEN, null)
+        } else {
+            null
+        } ?: return null
         val username = prefs.getString(KEY_USERNAME, null) ?: return null
         val roleStr = prefs.getString(KEY_ROLE, null) ?: return null
         val isExternalSession = com.example.security.OmnisSecureStorage.decryptAndRetrieve(

@@ -27,6 +27,15 @@ interface OmnisOutboxDao {
     suspend fun getPendingCount(maxRetries: Int = 5): Int
 
     @Query(
+        "SELECT COUNT(*) FROM omnis_sync_outbox " +
+            "WHERE syncStatus = 'PENDING' OR (syncStatus = 'FAILED' AND retryCount < :maxRetries)"
+    )
+    fun observePendingCount(maxRetries: Int = 5): kotlinx.coroutines.flow.Flow<Int>
+
+    @Query("SELECT MAX(syncedAt) FROM omnis_sync_outbox WHERE syncedAt IS NOT NULL")
+    fun observeLastSyncedTimestamp(): kotlinx.coroutines.flow.Flow<Long?>
+
+    @Query(
         "UPDATE omnis_sync_outbox SET syncStatus = 'SYNCED', syncedAt = :syncedAt, lastError = NULL " +
             "WHERE id IN (:ids)"
     )

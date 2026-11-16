@@ -1,16 +1,22 @@
-name: Deploy Android APK Release
+name: Deploy Production Android Release (AAB & APK)
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      backend_url:
+        description: "Production Cloud Run OMNIS_BACKEND_URL"
+        required: false
+        default: "https://ais-dev-43vgrwdupsfj4ht5yohxcz-291037164760.europe-west3.run.app"
 
 permissions:
   contents: write
 
 jobs:
-  build_and_release:
-    name: Build APK with Gradle & Create GitHub Release
+  test_and_release:
+    name: Verify Unit Tests & Build Release AAB/APK
     runs-on: ubuntu-latest
 
     steps:
@@ -20,9 +26,9 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
+          java-version: "17"
+          distribution: "temurin"
+          cache: "gradle"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -30,48 +36,55 @@ jobs:
       - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x gradlew || true
 
-      - name: Build Android Debug APK
+      - name: Run Unit & Robolectric Verification Gate
         run: |
           if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --no-daemon --stacktrace
+            ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
           else
-            gradle assembleDebug --no-daemon --stacktrace
+            gradle :app:testDebugUnitTest --no-daemon --stacktrace
           fi
 
-      - name: Prepare APK Package
+      - name: Build Android Release AAB & APK
+        env:
+          OMNIS_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://ais-dev-43vgrwdupsfj4ht5yohxcz-291037164760.europe-west3.run.app' }}
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew :app:bundleRelease :app:assembleRelease -POMNIS_BACKEND_URL="$OMNIS_BACKEND_URL" --no-daemon --stacktrace
+          else
+            gradle :app:bundleRelease :app:assembleRelease -POMNIS_BACKEND_URL="$OMNIS_BACKEND_URL" --no-daemon --stacktrace
+          fi
+
+      - name: Prepare Release Artifacts
         run: |
           mkdir -p build-artifacts
-          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
-          if [ -n "$APK_PATH" ]; then
-            cp "$APK_PATH" build-artifacts/Omnis-install.apk
-            echo "APK ready at build-artifacts/Omnis-install.apk"
-          else
-            echo "ERROR: APK file not found!" && exit 1
+          AAB_PATH=$(find app/build/outputs/bundle/release/ -name "*.aab" | head -n 1)
+          APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          if [ -n "$AAB_PATH" ]; then
+            cp "$AAB_PATH" build-artifacts/Omnis-release.aab
           fi
+          if [ -n "$APK_PATH" ]; then
+            cp "$APK_PATH" build-artifacts/Omnis-release.apk
+          fi
+          ls -lh build-artifacts/
 
-      - name: Upload APK Artifact
+      - name: Upload Release Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Omnis-install-apk
-          path: build-artifacts/Omnis-install.apk
-          retention-days: 14
+          name: Omnis-release-artifacts
+          path: build-artifacts/
+          retention-days: 30
 
       - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest-build
-          name: "O.M.N.I.S. Production Build (v1.0)"
+          name: "O.M.N.I.S. APEX ${{ github.ref_name }}"
           body: |
-            ### 🚀 O.M.N.I.S. Android APK Release
-            Automaticky sestavený a verifikovaný balíček při pushi do větve `main`.
-            
-            - **Balíček:** `Omnis-install.apk`
+            ### 🚀 O.M.N.I.S. APEX v4.5 Production Release
+            - **Unit & Robolectric Gate:** PASSED
+            - **Release Artifacts:** `Omnis-release.aab` & `Omnis-release.apk`
             - **Commit SHA:** `${{ github.sha }}`
-            - **Čas kompilace:** `${{ github.event.head_commit.timestamp }}`
-            
-            #### 📲 Instalace do mobilu:
-            Stáhněte přiložený soubor `Omnis-install.apk` do svého telefonu a spusťte instalaci.
-          files: build-artifacts/Omnis-install.apk
+          files: build-artifacts/*
           prerelease: false
           generate_release_notes: true
         env:

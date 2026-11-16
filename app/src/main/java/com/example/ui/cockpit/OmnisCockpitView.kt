@@ -606,7 +606,7 @@ fun OmnisCockpitView(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // NIS2 ZK-SNARK Regulatory Compliance Card
+        // NIS2 HMAC-SHA256 Hash-Chain Regulatory Compliance Card
         SectionHeader("NIS2 KRYPTOGRAFICKÝ AUDIT", Icons.Default.VerifiedUser) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             onTabSwitch(OmnisTab.TELEMETRY)

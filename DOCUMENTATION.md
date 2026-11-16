@@ -11,7 +11,7 @@
 ```mermaid
 quadrantChart
     title Dvoudimenzionální Řízení Rozhraní O.M.N.I.S.
-    x-axis Kognitivní Úroveň: BEGGINER --> EXPERT
+    x-axis Kognitivní Úroveň: BEGINNER --> EXPERT
     y-axis Bezpečnostní Role: STANDARD_USER --> ADMIN_OPERATOR
     quadrant-1 Správce Infrastruktury & Expert
     quadrant-2 Správce v Přehledovém Režimu
@@ -59,13 +59,13 @@ Architektura rozhraní O.M.N.I.S. je řízena dvěma **ortogonálními (na sobě
    - Směrování probíhá přes vyhrazený `AdminNavigationLayout` a `AdminTabRouter`.
    - Horní lišta `AdminTopAppBar` a panel `AdminDrawerContent` zobrazují systémové stavové odznaky, stav jističe (Circuit Breaker) a možnost globálního filtrování uživatelů.
 2. **Exkluzivní Administrátorské Moduly a Záložky:**
-   - **Admin Hub (`ADMIN`):** Diagnostika API key poolu, ruční spuštění Self-Healing auditu, spuštění Cloud SQL dual-write synchronizace, odstraňování synchronizovaných lokálních dat.
+   - **Admin Hub (`ADMIN`):** Diagnostika API key poolu, ruční spuštění Self-Healing auditu, dávková synchronizace Outbox -> Cloud Firestore / Cloud SQL (volitelně), bezpečné prořezání synchronizovaných lokálních dat.
    - **Kognitivní Uzly (`NODES`):** Vizualizace výpočetní sítě a topologie.
    - **Matrix / Octagon (`MATRIX`):** Tenzorové simulace, zamykání domén a profilové presety.
    - **Dev Prompt Lab (`DEV_PROMPT_LAB`):** Testování mutací promptů, sledování toku tokenů (`TokenFlowVisualizer`), LLM error diagnostika a dynamické nastavení citlivosti sémantické brány.
    - **Telemetrický Dashboard (`TELEMETRY`):** Živý stream fyzické telemetrie a systémových logů.
    - **Auditní Centrum (`PRODUCTION_AUDIT`):** Sledování dodržování EU AI Act, NIS2 a ISO/IEC 42001 normativů.
-   - **ZK Audit Ledger (`ZK_LEDGER`):** Kryptografický otisk $\text{CommitmentHash}$ pro verifikaci výstupů.
+   - **Kryptografický Audit Ledger (`ZK_LEDGER`):** Zřetězený kryptografický otisk $\text{HMAC-SHA256}$ ($\text{CommitmentHash}$) pro nepopiratelnou verifikaci výstupů.
 
 ---
 
@@ -90,12 +90,14 @@ flowchart TD
     G6 -->|PASS| EXEC[Execution Engine & LLM Stream]
 ```
 
-Systém O.M.N.I.S. 4.2 realizuje nulovou halucinaci (Zero-Hallucination Gatekeeper) prostřednictvím 6 bran:
+Systém **O.M.N.I.S. APEX v4.5** realizuje nulovou halucinaci (Zero-Hallucination Gatekeeper) nad šifrovanou databází **Room v18** (SQLCipher + Transactional Outbox `omnis_sync_outbox`) a **Cloud Firestore** (primární cloudové úložiště s CQRS projekcí; Cloud SQL `pgvector` je volitelné) prostřednictvím 6 bran:
 1. **G1 (Entry Point Resolution):** Mapování vstupních uzlů v 8D ontologii (`SYS`, `ECON`, `PSYCH`, `ECO`, `LAW`, `SEC`, `PHYS`, `SOC`).
 2. **G2 (Concept Coupling):** Provázání alespoň 2 konceptů nebo verifikace sémantického kontextu.
 3. **G3 (Causal Graph Path):** Spojitá kauzální cesta v CSR grafu $P(Y \mid do(X=x))$.
-4. **G4 (Quotable Evidence):** Ukotvení vůči standardům (ISO/IEC/IEEE, NIST SP 800-207, EU AI Act, NIS2).
-5. **G5 (Retraction & Integrity):** Ochrana před zastaralými či falsifikovanými premisami.
-6. **G6 (Entailment & Shannon Entropy):** Výpočet informační entropie $S = -\sum p_i \ln p_i$.
+4. **G4 (Quotable Evidence & Zero Trust):** Ukotvení vůči standardům (ISO/IEC 42001:2023, IEEE, **NIST SP 800-207**, EU AI Act, NIS2).
+5. **G5 (Retraction & Integrity):** Ochrana před zastaralými či falsifikovanými premisami a kaskádou (`p_c >= 0.38` izoluje uzly CSR a přepíná tokenový rozpočet na `FULL_FORENSIC` 0% komprese; `cognitiveAnomalyScore > 0.75` aktivuje výstrahu pro `ADMIN_OPERATOR`).
+6. **G6 (Entailment & Shannon Entropy):** Výpočet informační entropie $S = -\sum p_i \ln p_i < 2.08$ nats.
+
+Pro lokální zrychlenou inferenci využívá klient Play-Policy-kompatibilní `HybridInferenceOrchestrator` (>= 4 GB RAM hardwarový práh, rozpočet 1500 ms, nulové dynamické načítání nativního kódu `.so`/`.dex`/`.jar`). Auditní otisky HMAC-SHA256 Hash-Chain podporují volitelné asymetrické podepisování Google Cloud KMS (`ECDSA P-256 SHA-256`) při nastavení `ENABLE_CLOUD_KMS=true`.
 
 Pokud dotaz neprojde kritickými branami, systém pro běžné uživatele navrátí srozumitelné doporučení na upřesnění dotazu, zatímco administrátorovi poskytne plnou diagnostiku s vypnutím bran pouze v případě schváleného `OVERRIDE_ACTIVE` příznaku.

@@ -62,6 +62,8 @@ fun AdminTabRouter(
                 val isHealing by viewModel.isSelfHealingActive.collectAsStateWithLifecycle()
                 val selfHealingLogs by viewModel.selfHealingLogs.collectAsStateWithLifecycle()
                 val cloudSqlSyncStatus by viewModel.cloudSqlSyncStatus.collectAsStateWithLifecycle()
+                val pendingOutboxCount by viewModel.pendingOutboxCount.collectAsStateWithLifecycle()
+                val lastOutboxSyncTimestamp by viewModel.lastOutboxSyncTimestamp.collectAsStateWithLifecycle()
 
                 AdminHubView(
                     records = records,
@@ -83,6 +85,8 @@ fun AdminTabRouter(
                     selfHealingLogs = selfHealingLogs,
                     onTriggerHealing = { viewModel.performSelfHealing() },
                     syncStatus = cloudSqlSyncStatus,
+                    pendingOutboxCount = pendingOutboxCount,
+                    lastOutboxSyncTimestamp = lastOutboxSyncTimestamp,
                     onSyncCloudSql = { viewModel.triggerCloudSqlSync() },
                     onTestCloudSqlConnection = { viewModel.testCloudSqlConnection() },
                     onTestProtectedApi = { withoutToken, adminPath ->

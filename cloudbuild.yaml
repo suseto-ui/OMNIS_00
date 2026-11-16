@@ -12,7 +12,7 @@ steps:
       - |
         set -e
         echo "=== [CI/CD Step 0] Pre-flight Syntax & Quality Gate Verification ==="
-        python3 -m py_compile backend/*.py backend/schemas/*.py backend/graph/*.py backend/gemini/*.py scripts/*.py
+        python3 -m py_compile $$(find backend scripts -name "*.py")
         python3 scripts/verify_quality_gate.py
         echo "QUALITY GATE VERIFIED: Zero syntax errors, ready for container build."
 
@@ -37,8 +37,6 @@ steps:
   - name: "gcr.io/cloud-builders/docker"
     args:
       - "build"
-      - "--build-arg"
-      - "VITE_FIRESTORE_DATABASE_ID=${_FIRESTORE_DATABASE_ID}"
       - "-t"
       - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/omnis-backend:${_TAG}"
       - "-t"
@@ -84,9 +82,11 @@ steps:
         fi
 
         CLOUDSQL_FLAG=""
+        SECRETS_SPEC="SECRET_KEY=JWT_SECRET_KEY:latest,AUDIT_HMAC_KEY=AUDIT_HMAC_KEY:latest,OMNIS_SYNC_API_KEY=OMNIS_SYNC_API_KEY:latest,OMNIS_ADMIN_SECRET_HASHES=OMNIS_ADMIN_SECRET_HASHES:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest"
         if [ -n "${_CLOUDSQL_INSTANCE}" ]; then
           CLOUDSQL_FLAG="--add-cloudsql-instances=${_CLOUDSQL_INSTANCE}"
-          echo "Attaching Cloud SQL instance: ${_CLOUDSQL_INSTANCE}"
+          SECRETS_SPEC="$${SECRETS_SPEC},DATABASE_URL=OMNIS_DATABASE_URL:latest"
+          echo "Attaching optional Cloud SQL instance: ${_CLOUDSQL_INSTANCE}"
         fi
 
         gcloud run deploy ${_SERVICE_NAME} \
@@ -104,8 +104,8 @@ steps:
           --timeout=300s \
           $$SA_FLAG \
           $$CLOUDSQL_FLAG \
-          --set-env-vars=PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_MODEL=gemini-2.5-flash,FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID},FIRESTORE_DATABASE_ID=${_FIRESTORE_DATABASE_ID} \
-          --set-secrets=SECRET_KEY=JWT_SECRET_KEY:latest,OMNIS_SYNC_API_KEY=OMNIS_SYNC_API_KEY:latest,OMNIS_ADMIN_SECRET_HASHES=OMNIS_ADMIN_SECRET_HASHES:latest,DATABASE_URL=OMNIS_DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest
+          --set-env-vars=ENV=production,REQUIRE_APP_CHECK=true,PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_MODEL=gemini-2.5-flash,FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID},FIRESTORE_DATABASE_ID=${_FIRESTORE_DATABASE_ID},ENABLE_FIRESTORE_CQRS_PROJECTION=true \
+          --set-secrets=$$SECRETS_SPEC
 
         SERVICE_URL=$(gcloud run services describe ${_SERVICE_NAME} --region=${_REGION} --project=${PROJECT_ID} --format='value(status.url)')
         echo "=== Cloud Run Service Deployed: $$SERVICE_URL ==="

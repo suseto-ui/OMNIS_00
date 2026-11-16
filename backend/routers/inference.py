@@ -114,6 +114,26 @@ async def analyze_inference(
         prev_commitment_hash=req.prev_commitment_hash,
     )
 
+    try:
+        from backend.security.firestore_store import fs_set_doc
+
+        fs_set_doc(
+            "proof_of_necessity",
+            commitment.commitment_hash,
+            {
+                "callerUid": caller.uid,
+                "status": "APPROVED" if gates.all_passed else "REFUSED",
+                "qOmnis": q_omnis,
+                "sigma": sigma,
+                "proofOfNecessity": pon.model_dump(),
+                "gateEvaluation": gates.model_dump(),
+                "auditCommitment": commitment.model_dump(),
+            },
+            merge=True,
+        )
+    except Exception:
+        pass
+
     return InferenceAnalyzeResponse(
         status="APPROVED" if gates.all_passed else "REFUSED",
         sanitized_query=clean_q,

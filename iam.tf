@@ -11,7 +11,7 @@ resource "google_project_iam_member" "ar_writer" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Role pro nasazení do Cloud Run
+# Role pro nasazení do Cloud Run (Least Privilege: bez roles/run.admin)
 resource "google_project_iam_member" "run_developer" {
   project = var.project_id
   role    = "roles/run.developer"
@@ -25,11 +25,12 @@ resource "google_project_iam_member" "sa_user" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Přístup ke všem tajným klíčům v Secret Manageru pro CI/CD
+# Per-secret přístup k tajným klíčům v Secret Manageru pro CI/CD
 resource "google_secret_manager_secret_iam_member" "secret_access" {
   for_each = toset([
     "OMNIS_DATABASE_URL",
     "JWT_SECRET_KEY",
+    "AUDIT_HMAC_KEY",
     "GOOGLE_CLIENT_ID",
     "GEMINI_API_KEY",
     "OMNIS_SYNC_API_KEY",
@@ -41,8 +42,9 @@ resource "google_secret_manager_secret_iam_member" "secret_access" {
   member    = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Role pro správu Cloud SQL (aby mohl CI/CD spouštět migrace)
+# Role pro volitelnou správu Cloud SQL (pouze pokud je enable_cloud_sql = true)
 resource "google_project_iam_member" "sql_client" {
+  count   = var.enable_cloud_sql ? 1 : 0
   project = var.project_id
   role    = "roles/cloudsql.client"
   member  = "serviceAccount:${google_service_account.github_actions.email}"
@@ -54,24 +56,43 @@ resource "google_service_account" "cloud_run_sa" {
   display_name = "O.M.N.I.S. Cloud Run Runtime Service Account"
 }
 
-# Runtime access for the Cloud Run service account
+# Runtime access pro volitelnou Cloud SQL instanci (pouze pokud enable_cloud_sql = true)
 resource "google_project_iam_member" "cloud_run_sql_client" {
+  count   = var.enable_cloud_sql ? 1 : 0
   project = var.project_id
   role    = "roles/cloudsql.client"
   member  = "serviceAccount:${google_service_account.cloud_run_sa.email}"
 }
 
-# Přístup k tajným klíčům v Secret Manageru pro Cloud Run
-resource "google_project_iam_member" "cloud_run_secret_accessor" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+# Per-secret Least-Privilege přístup k tajným klíčům pro Cloud Run runtime (nahrazuje project-wide oprávnění)
+resource "google_secret_manager_secret_iam_member" "cloud_run_secret_access" {
+  for_each = toset([
+    "OMNIS_DATABASE_URL",
+    "JWT_SECRET_KEY",
+    "AUDIT_HMAC_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GEMINI_API_KEY",
+    "OMNIS_SYNC_API_KEY",
+    "OMNIS_ADMIN_SECRET_HASHES",
+  ])
+  project   = var.project_id
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloud_run_sa.email}"
 }
 
-# Přístup k pojmenované databázi Firebase Firestore pro auditní a provozní záznamy
+# Přístup k pojmenované databázi Firebase Firestore pro primární auditní a provozní záznamy
 resource "google_project_iam_member" "cloud_run_datastore_user" {
   project = var.project_id
   role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
+
+# Volitelný Cloud KMS signer přístup (pouze pokud je aktivní enable_cloud_kms = true)
+resource "google_project_iam_member" "cloud_run_kms_signer" {
+  count   = var.enable_cloud_kms ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudkms.signerVerifier"
   member  = "serviceAccount:${google_service_account.cloud_run_sa.email}"
 }
 
@@ -80,11 +101,4 @@ resource "google_project_iam_member" "cloud_run_log_writer" {
   project = var.project_id
   role    = "roles/logging.logWriter"
   member  = "serviceAccount:${google_service_account.cloud_run_sa.email}"
-}
-
-# Povolení pro interaktivní shell (vyžaduje dodatečná oprávnění pro debugování)
-resource "google_project_iam_member" "run_session_manager" {
-  project = var.project_id
-  role    = "roles/run.admin" # Nebo specifičtější role pro vývojáře
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
