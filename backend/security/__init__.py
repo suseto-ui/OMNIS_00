@@ -11,14 +11,22 @@ from backend.security.auth_utils import (
 from backend.security.firebase_guard import AuthenticatedCaller, verify_firebase_and_appcheck
 from backend.security.kms_signer import KmsSignatureEnvelope, sign_audit_digest_with_kms
 from backend.security.sanitizer import SanitizedPromptResult, sanitize_prompt
+from backend.security.zk_ledger_service import (
+    LedgerAppendRecord,
+    LedgerVerificationResult,
+    ZkAuditLedgerService,
+)
 
 __all__ = [
     "ACCESS_TOKEN_EXPIRE_MINUTES",
     "ALGORITHM",
     "AuthenticatedCaller",
     "KmsSignatureEnvelope",
+    "LedgerAppendRecord",
+    "LedgerVerificationResult",
     "SECRET_KEY",
     "SanitizedPromptResult",
+    "ZkAuditLedgerService",
     "create_access_token",
     "decode_access_token",
     "get_password_hash",

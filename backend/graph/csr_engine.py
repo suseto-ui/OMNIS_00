@@ -17,6 +17,13 @@ from backend.csr_graph import (
 )
 
 
+from backend.graph.age_repository import (
+    AgeCausalGraphRepository,
+    CsrGraphSnapshot,
+    get_age_graph_repository,
+)
+
+
 def compute_q_omnis(domain_scores: Dict[str, float], entropy: float, beta_1: int = 2) -> float:
     """
     Výpočet celkové systémové kvality inference Q_omnis v intervalu [0.0, 1.0]
@@ -30,6 +37,8 @@ def compute_q_omnis(domain_scores: Dict[str, float], entropy: float, beta_1: int
 
 
 __all__ = [
+    "AgeCausalGraphRepository",
+    "CsrGraphSnapshot",
     "CsrKnowledgeGraph",
     "CsrKnowledgeGraphSchema",
     "DOMAINS_8D",
@@ -37,4 +46,5 @@ __all__ = [
     "compute_advanced_metrics",
     "compute_q_omnis",
     "generate_proof_of_necessity",
+    "get_age_graph_repository",
 ]

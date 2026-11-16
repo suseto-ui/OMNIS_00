@@ -10,8 +10,17 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.graph.csr_engine import CsrKnowledgeGraph, DOMAINS_8D, compute_advanced_metrics, compute_q_omnis
+from backend.config import get_settings
+from backend.database import get_audit_db
+from backend.graph.csr_engine import (
+    CsrKnowledgeGraph,
+    DOMAINS_8D,
+    compute_advanced_metrics,
+    compute_q_omnis,
+    get_age_graph_repository,
+)
 from backend.schemas.akge import (
     CryptographicAuditCommitment,
     GateEvaluationResult,
@@ -19,6 +28,7 @@ from backend.schemas.akge import (
     ProofOfNecessityLog,
 )
 from backend.security import AuthenticatedCaller, sanitize_prompt, verify_firebase_and_appcheck
+from backend.security.zk_ledger_service import ZkAuditLedgerService
 
 inference_router = APIRouter(prefix="/api/v1/inference", tags=["AKGE-8D Inference"])
 
@@ -51,6 +61,7 @@ class InferenceAnalyzeResponse(BaseModel):
 async def analyze_inference(
     req: InferenceAnalyzeRequest,
     caller: AuthenticatedCaller = Depends(verify_firebase_and_appcheck),
+    audit_db: AsyncSession = Depends(get_audit_db),
 ) -> InferenceAnalyzeResponse:
     sanitized = sanitize_prompt(req.query)
     scores = {
@@ -69,17 +80,18 @@ async def analyze_inference(
         priority_profile=req.priority_profile or "Balanced Core",
     )
 
+    age_repo = get_age_graph_repository()
     graph = CsrKnowledgeGraph.build_8d_tensor_graph(scores)
     topo = graph.calculate_topological_invariants(scores)
     percolation_critical, percolation_msg = graph.evaluate_percolation_bypass(scores)
-    do_sys_law = graph.evaluate_do_calculus("SYS", "LAW")
+    do_sys_law = age_repo.evaluate_g3_do_calculus("SYS", "LAW", intervention_value=0.95, current_values=scores)
     adv_metrics = compute_advanced_metrics(scores, topo["shannon_entropy"], req.latency_ms)
     q_omnis = compute_q_omnis(scores, topo["shannon_entropy"], topo["betti_1"])
 
     clean_q = sanitized.sanitized_text
     g1_ok = len(clean_q) >= 3
     g2_ok = len(clean_q.split()) >= 2
-    g3_ok = bool(do_sys_law.get("shortest_causal_path"))
+    g3_ok = bool(do_sys_law.get("g3_passed")) and bool(do_sys_law.get("shortest_causal_path"))
     g4_ok = not any(
         bad in clean_q.lower()
         for bad in ("ransomware", "malware", "bypass security", "social scoring")
@@ -100,7 +112,7 @@ async def analyze_inference(
     sigma = round(sum(max(0.0, (0.5 - v) * 2.0) for v in scores.values()) / 8.0, 4)
     pon = ProofOfNecessityLog(
         trigger_vector=f"Caller({caller.uid}) -> InferenceAnalyze(profile={matrix.priority_profile})",
-        exclusion_proof="Ungrounded single-pass generation rejected; CSR 8D + 6-Gate ladder enforced.",
+        exclusion_proof="Ungrounded single-pass generation rejected; Apache AGE CSR 8D + 6-Gate ladder enforced.",
         minimization_check=f"Sanitized PII={len(sanitized.pii_redacted_types)}; Bounded to 8 invariant domains.",
         system_tension_sigma=sigma,
     )
@@ -115,24 +127,42 @@ async def analyze_inference(
     )
 
     try:
-        from backend.security.firestore_store import fs_set_doc
-
-        fs_set_doc(
-            "proof_of_necessity",
-            commitment.commitment_hash,
-            {
-                "callerUid": caller.uid,
-                "status": "APPROVED" if gates.all_passed else "REFUSED",
-                "qOmnis": q_omnis,
-                "sigma": sigma,
-                "proofOfNecessity": pon.model_dump(),
-                "gateEvaluation": gates.model_dump(),
-                "auditCommitment": commitment.model_dump(),
-            },
-            merge=True,
+        await ZkAuditLedgerService.append_entry(
+            audit_db,
+            user_id=caller.uid,
+            query=clean_q,
+            r_systemic=matrix.harmonic_mean_hw,
+            tier=tier,
+            nonce=commitment.nonce,
+            override_active=False,
+            payload={"q_omnis": q_omnis, "g3_snapshot_version": do_sys_law.get("snapshot_version")},
         )
     except Exception:
-        pass
+        try:
+            await audit_db.rollback()
+        except Exception:
+            pass
+
+    if not get_settings().USE_OSS_POSTGRES_SYNC:
+        try:
+            from backend.security.firestore_store import fs_set_doc
+
+            fs_set_doc(
+                "proof_of_necessity",
+                commitment.commitment_hash,
+                {
+                    "callerUid": caller.uid,
+                    "status": "APPROVED" if gates.all_passed else "REFUSED",
+                    "qOmnis": q_omnis,
+                    "sigma": sigma,
+                    "proofOfNecessity": pon.model_dump(),
+                    "gateEvaluation": gates.model_dump(),
+                    "auditCommitment": commitment.model_dump(),
+                },
+                merge=True,
+            )
+        except Exception:
+            pass
 
     return InferenceAnalyzeResponse(
         status="APPROVED" if gates.all_passed else "REFUSED",

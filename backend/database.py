@@ -10,8 +10,8 @@ from backend.gcp_secrets import get_secret
 
 logger = logging.getLogger("omnis.db")
 
-# Primární cloudové databázové úložiště je Firebase Firestore (google-cloud-firestore).
-# SQLAlchemy a relační schémata jsou udržována v in-memory režimu pro zpětnou kompatibilitu modelů.
+# Primární databázové úložiště v OSS architektuře je PostgreSQL 17 (pgvector + Apache AGE + pgcrypto).
+# Pro lokální testy bez DB instance se automaticky přepne do SQLite / in-memory režimu.
 DATABASE_URL = None
 raw_db_url = (get_secret("DATABASE_URL") or get_secret("OMNIS_DATABASE_URL") or "").strip()
 if raw_db_url.startswith(("sqlite", "postgresql://", "postgresql+asyncpg://", "postgres://")):
@@ -19,7 +19,12 @@ if raw_db_url.startswith(("sqlite", "postgresql://", "postgresql+asyncpg://", "p
 elif raw_db_url:
     logger.warning("Nepodporovaný formát DATABASE_URL; databáze poběží v mock režimu.")
 else:
-    logger.info("DATABASE_URL není nastaveno; databázová vrstva využije mock session nebo Firestore.")
+    logger.info("DATABASE_URL není nastaveno; databázová vrstva využije mock session nebo lokální fallback.")
+
+AUDIT_DATABASE_URL = None
+raw_audit_db_url = (get_secret("AUDIT_DATABASE_URL") or "").strip()
+if raw_audit_db_url.startswith(("sqlite", "postgresql://", "postgresql+asyncpg://", "postgres://")):
+    AUDIT_DATABASE_URL = raw_audit_db_url
 
 
 class _QueryResult:
@@ -164,23 +169,40 @@ def SessionLocal():
     return _SyncMockSession()
 
 
+audit_engine = None
+audit_session_factory = None
+if AUDIT_DATABASE_URL:
+    try:
+        audit_url = AUDIT_DATABASE_URL
+        if audit_url.startswith("postgresql://"):
+            audit_url = audit_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif audit_url.startswith("postgres://"):
+            audit_url = audit_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        audit_engine = create_async_engine(audit_url, echo=False, pool_pre_ping=True, pool_recycle=300)
+        audit_session_factory = async_sessionmaker(bind=audit_engine, class_=AsyncSession, expire_on_commit=False)
+        logger.info("Least-privilege Audit AsyncEngine configured.")
+    except Exception as audit_err:
+        logger.warning(f"Audit engine fallback to primary DB: {audit_err}")
+
+
 async def init_db():
     if engine is not None:
-        logger.info("Initializing Google Cloud SQL database schema...")
+        logger.info("Initializing PostgreSQL 17 / SQLite database schema...")
         try:
             async with engine.begin() as conn:
-                try:
-                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-                    logger.info("pgvector extension installed/verified.")
-                except Exception as ext_err:
-                    logger.warning(
-                        f"Could not create vector extension (might be already installed or insufficient privileges): {ext_err}"
-                    )
+                dialect_name = conn.dialect.name
+                if dialect_name != "sqlite":
+                    for ext_name in ("vector", "age", "pgcrypto"):
+                        try:
+                            await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {ext_name};"))
+                        except Exception as ext_err:
+                            logger.warning(
+                                f"Could not create extension {ext_name} (might already exist or insufficient privileges): {ext_err}"
+                            )
 
                 await conn.run_sync(Base.metadata.create_all)
 
-                dialect_name = conn.dialect.name
-                # Bezpečná migrace sloupce is_approved pro existující databáze (PostgreSQL i SQLite)
+                # Bezpečná migrace sloupců pro existující databáze (PostgreSQL i SQLite)
                 try:
                     if dialect_name == "sqlite":
                         pragma_res = await conn.execute(text("PRAGMA table_info(users)"))
@@ -216,6 +238,11 @@ async def init_db():
                 try:
                     async with engine.connect() as idx_conn:
                         autocommit_conn = await idx_conn.execution_options(isolation_level="AUTOCOMMIT")
+                        await autocommit_conn.execute(text(
+                            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_rag_memory_64d_hnsw_cosine "
+                            "ON rag_memory_64d USING hnsw (embedding vector_cosine_ops) "
+                            "WITH (m = 16, ef_construction = 128);"
+                        ))
                         await autocommit_conn.execute(text(
                             "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_vector_memories_hnsw_64 "
                             "ON vector_memories USING hnsw (embedding_64 vector_cosine_ops) "
@@ -257,6 +284,34 @@ async def get_db() -> AsyncGenerator:
         yield _MockSession()
 
 
+async def get_audit_db() -> AsyncGenerator:
+    """Poskytuje session s rolí omnis_audit_append (pokud je AUDIT_DATABASE_URL nastaveno), jinak primární DB."""
+    if audit_engine is not None and audit_session_factory is not None:
+        async with audit_session_factory() as session:
+            try:
+                yield session
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
+        return
+    async for session in get_db():
+        yield session
+
+
+async def set_pg_rls_context(db: AsyncSession, user_id: str, role: str = "STANDARD_USER") -> None:
+    """Nastaví lokální PostgreSQL GUC proměnné pro RLS politiky v rámci aktuální transakce."""
+    if db is None or isinstance(db, _MockSession):
+        return
+    bind = getattr(db, "bind", None)
+    dialect_name = getattr(getattr(bind, "dialect", None), "name", "")
+    if dialect_name != "postgresql":
+        return
+    await db.execute(text("SELECT set_config('omnis.current_user_id', :uid, true)"), {"uid": str(user_id)})
+    await db.execute(text("SELECT set_config('omnis.current_role', :role, true)"), {"role": str(role)})
+
+
 def get_pool_status() -> Dict[str, Any]:
     """Vrací diagnostiku stavu connection poolu pro /api/v1/health."""
     if engine is None:
@@ -272,7 +327,7 @@ def get_pool_status() -> Dict[str, Any]:
     try:
         pool = engine.pool
         return {
-            "driver": "postgresql+asyncpg",
+            "driver": "postgresql+asyncpg" if engine.dialect.name != "sqlite" else "sqlite+aiosqlite",
             "status": "connected",
             "pool_size": getattr(pool, "size", lambda: 20)(),
             "checked_in": getattr(pool, "checkedin", lambda: 0)(),
@@ -291,15 +346,99 @@ def get_pool_status() -> Dict[str, Any]:
 # Hybridní vyhledávání (HNSW Cosine Distance + RRF Fusion)
 # ==========================================================
 
+async def upsert_rag_memory_64d(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    content: str,
+    embedding_64: List[float],
+    domain: str = "SYSTEMS_INTELLIGENCE",
+    thread_id: str = "thread_main",
+    importance_score: float = 1.0,
+    metadata_json: Optional[Dict[str, Any]] = None,
+    idempotency_key: Optional[str] = None,
+) -> bool:
+    """
+    Asynchronně a idempotentně uloží 64D vektor do tabulky rag_memory_64d.
+    Vrací True při novém vložení, False při deduplikaci dle idempotency_key.
+    """
+    if db is None or isinstance(db, _MockSession):
+        return False
+    if len(embedding_64) != 64:
+        raise ValueError(f"Expected 64D embedding vector, got {len(embedding_64)} dimensions.")
+
+    import json
+    import uuid as _uuid
+
+    bind = getattr(db, "bind", None)
+    dialect_name = getattr(getattr(bind, "dialect", None), "name", "")
+    record_id = str(_uuid.uuid4())
+    meta = metadata_json or {}
+
+    if dialect_name == "postgresql":
+        vec_literal = json.dumps([float(v) for v in embedding_64])
+        sql = text("""
+            INSERT INTO public.rag_memory_64d
+                (id, user_id, thread_id, domain, content, embedding, importance_score, metadata_json, idempotency_key)
+            VALUES
+                (:id, :user_id, :thread_id, :domain, :content, CAST(:embedding AS vector(64)),
+                 :importance_score, CAST(:metadata_json AS jsonb), :idempotency_key)
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING id;
+        """)
+        res = await db.execute(
+            sql,
+            {
+                "id": record_id,
+                "user_id": user_id,
+                "thread_id": thread_id,
+                "domain": domain,
+                "content": content,
+                "embedding": vec_literal,
+                "importance_score": float(importance_score),
+                "metadata_json": json.dumps(meta),
+                "idempotency_key": idempotency_key,
+            },
+        )
+        return res.scalar_one_or_none() is not None
+
+    from backend.models import RagMemory64D
+    from sqlalchemy import select as sa_select
+
+    if idempotency_key:
+        existing = await db.execute(
+            sa_select(RagMemory64D.id).where(RagMemory64D.idempotency_key == idempotency_key)
+        )
+        if existing.scalar_one_or_none() is not None:
+            return False
+
+    entry = RagMemory64D(
+        id=record_id,
+        user_id=user_id,
+        thread_id=thread_id,
+        domain=domain,
+        content=content,
+        embedding=[float(v) for v in embedding_64],
+        importance_score=float(importance_score),
+        metadata_json=meta,
+        idempotency_key=idempotency_key,
+    )
+    db.add(entry)
+    await db.flush()
+    return True
+
+
 async def hybrid_search_knowledge(
     query_text: str,
     query_embedding: Optional[List[float]] = None,
     limit: int = 5,
     rrf_k: int = 60,
     db: Optional[AsyncSession] = None,
+    user_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Hybridní vyhledávání kombinující HNSW kosinovou vzdálenost (pgvector) a Reciprocal Rank Fusion (RRF).
+    Hybridní vyhledávání kombinující HNSW kosinovou vzdálenost (pgvector rag_memory_64d / vector_memories)
+    a textové sparse vyhledávání pomocí Reciprocal Rank Fusion (RRF).
     Vzorec: RRF_score(d) = sum_{m in {dense, sparse}} (1 / (rrf_k + rank_m(d)))
     """
     results_map: Dict[str, Dict[str, Any]] = {}
@@ -307,24 +446,78 @@ async def hybrid_search_knowledge(
     sparse_ranks: Dict[str, int] = {}
 
     if db is not None and not isinstance(db, _MockSession) and engine is not None:
+        dialect_name = getattr(getattr(db, "bind", None), "dialect", None)
+        dialect_str = getattr(dialect_name, "name", "") if dialect_name else engine.dialect.name
         try:
-            # 1. HNSW kosinová vzdálenost (Dense retrieval)
-            if query_embedding:
+            # 1. HNSW kosinová vzdálenost (Dense retrieval) prioritně nad rag_memory_64d (PostgreSQL)
+            if query_embedding and dialect_str != "sqlite":
                 import json
-                query_vec_str = json.dumps(query_embedding)
+                query_vec_str = json.dumps([float(v) for v in query_embedding])
                 if len(query_embedding) == 64:
                     try:
-                        await db.execute(text("SET LOCAL hnsw.ef_search = 40;"))
+                        await db.execute(text("SET LOCAL hnsw.ef_search = 64;"))
                     except Exception:
                         pass
-                    dense_sql = text("""
-                        SELECT id, content, memory_type, importance_score, metadata_json,
-                               (embedding_64 <=> CAST(:query_vec AS vector)) as cosine_distance
-                        FROM vector_memories
-                        WHERE embedding_64 IS NOT NULL
-                        ORDER BY cosine_distance ASC
-                        LIMIT :search_limit;
-                    """)
+
+                    if user_id:
+                        rag64_sql = text("""
+                            SELECT id::text, content, domain, importance_score, metadata_json,
+                                   (embedding <=> CAST(:query_vec AS vector(64))) AS cosine_distance
+                            FROM public.rag_memory_64d
+                            WHERE user_id = :user_id
+                            ORDER BY cosine_distance ASC
+                            LIMIT :search_limit;
+                        """)
+                        rag_params = {"query_vec": query_vec_str, "user_id": user_id, "search_limit": limit * 2}
+                    else:
+                        rag64_sql = text("""
+                            SELECT id::text, content, domain, importance_score, metadata_json,
+                                   (embedding <=> CAST(:query_vec AS vector(64))) AS cosine_distance
+                            FROM public.rag_memory_64d
+                            ORDER BY cosine_distance ASC
+                            LIMIT :search_limit;
+                        """)
+                        rag_params = {"query_vec": query_vec_str, "search_limit": limit * 2}
+
+                    try:
+                        rag_res = await db.execute(rag64_sql, rag_params)
+                        for rank, row in enumerate(rag_res.fetchall(), start=1):
+                            doc_id = str(row[0])
+                            dense_ranks[doc_id] = rank
+                            if doc_id not in results_map:
+                                results_map[doc_id] = {
+                                    "id": doc_id,
+                                    "content": row[1],
+                                    "memory_type": row[2] or "rag_64d",
+                                    "importance_score": float(row[3] or 1.0),
+                                    "metadata": row[4] or {},
+                                    "cosine_distance": float(row[5] or 0.0),
+                                }
+                    except Exception as rag_err:
+                        logger.debug(f"rag_memory_64d dense lookup fallback to vector_memories: {rag_err}")
+
+                    if not dense_ranks:
+                        dense_sql = text("""
+                            SELECT id, content, memory_type, importance_score, metadata_json,
+                                   (embedding_64 <=> CAST(:query_vec AS vector)) as cosine_distance
+                            FROM vector_memories
+                            WHERE embedding_64 IS NOT NULL
+                            ORDER BY cosine_distance ASC
+                            LIMIT :search_limit;
+                        """)
+                        dense_res = await db.execute(dense_sql, {"query_vec": query_vec_str, "search_limit": limit * 2})
+                        for rank, row in enumerate(dense_res.fetchall(), start=1):
+                            doc_id = str(row[0])
+                            dense_ranks[doc_id] = rank
+                            if doc_id not in results_map:
+                                results_map[doc_id] = {
+                                    "id": doc_id,
+                                    "content": row[1],
+                                    "memory_type": row[2],
+                                    "importance_score": float(row[3] or 1.0),
+                                    "metadata": row[4] or {},
+                                    "cosine_distance": float(row[5] or 0.0),
+                                }
                 else:
                     dense_sql = text("""
                         SELECT id, content, memory_type, importance_score, metadata_json,
@@ -334,32 +527,58 @@ async def hybrid_search_knowledge(
                         ORDER BY cosine_distance ASC
                         LIMIT :search_limit;
                     """)
-                dense_res = await db.execute(dense_sql, {"query_vec": query_vec_str, "search_limit": limit * 2})
-                for rank, row in enumerate(dense_res.fetchall(), start=1):
+                    dense_res = await db.execute(dense_sql, {"query_vec": query_vec_str, "search_limit": limit * 2})
+                    for rank, row in enumerate(dense_res.fetchall(), start=1):
+                        doc_id = str(row[0])
+                        dense_ranks[doc_id] = rank
+                        if doc_id not in results_map:
+                            results_map[doc_id] = {
+                                "id": doc_id,
+                                "content": row[1],
+                                "memory_type": row[2],
+                                "importance_score": float(row[3] or 1.0),
+                                "metadata": row[4] or {},
+                                "cosine_distance": float(row[5] or 0.0),
+                            }
+
+            # 2. Textové / Sparse vyhledávání nad rag_memory_64d (pokud existuje) a vector_memories
+            like_op = "ILIKE" if dialect_str != "sqlite" else "LIKE"
+            try:
+                sparse_rag_sql = text(f"""
+                    SELECT id, content, domain, importance_score, metadata_json
+                    FROM rag_memory_64d
+                    WHERE content {like_op} :pattern
+                    ORDER BY importance_score DESC
+                    LIMIT :search_limit;
+                """)
+                sparse_rag_res = await db.execute(sparse_rag_sql, {"pattern": f"%{query_text}%", "search_limit": limit * 2})
+                for rank, row in enumerate(sparse_rag_res.fetchall(), start=1):
                     doc_id = str(row[0])
-                    dense_ranks[doc_id] = rank
+                    sparse_ranks[doc_id] = rank
                     if doc_id not in results_map:
                         results_map[doc_id] = {
                             "id": doc_id,
                             "content": row[1],
-                            "memory_type": row[2],
+                            "memory_type": row[2] or "rag_64d",
                             "importance_score": float(row[3] or 1.0),
                             "metadata": row[4] or {},
-                            "cosine_distance": float(row[5] or 0.0),
+                            "cosine_distance": 0.5,
                         }
+            except Exception:
+                pass
 
-            # 2. Textové / BM25 vyhledávání (Sparse retrieval)
-            sparse_sql = text("""
+            sparse_sql = text(f"""
                 SELECT id, content, memory_type, importance_score, metadata_json
                 FROM vector_memories
-                WHERE content ILIKE :pattern
+                WHERE content {like_op} :pattern
                 ORDER BY importance_score DESC
                 LIMIT :search_limit;
             """)
             sparse_res = await db.execute(sparse_sql, {"pattern": f"%{query_text}%", "search_limit": limit * 2})
             for rank, row in enumerate(sparse_res.fetchall(), start=1):
                 doc_id = str(row[0])
-                sparse_ranks[doc_id] = rank
+                if doc_id not in sparse_ranks:
+                    sparse_ranks[doc_id] = len(sparse_ranks) + rank
                 if doc_id not in results_map:
                     results_map[doc_id] = {
                         "id": doc_id,

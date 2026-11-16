@@ -332,10 +332,19 @@ async def _safe_init_db():
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Startup and shutdown lifecycle handler."""
-    logger.info("Starting O.M.N.I.S. backend on Cloud Run...")
+    from backend.database import DATABASE_URL
+    from backend.graph.csr_engine import get_age_graph_repository
+
+    logger.info("Starting O.M.N.I.S. backend (PostgreSQL 17 + Apache AGE + pgvector)...")
     get_settings().validate_production_secrets()
     asyncio.create_task(_safe_init_db())
+
+    age_repo = get_age_graph_repository()
+    if DATABASE_URL and DATABASE_URL.startswith(("postgresql://", "postgresql+asyncpg://", "postgres://")):
+        await age_repo.start_invalidation_listener(DATABASE_URL)
+
     yield
+    await age_repo.stop_listener()
     logger.info("Shutting down O.M.N.I.S. backend.")
 
 

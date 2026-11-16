@@ -2,8 +2,9 @@ import logging
 import os
 import time
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
@@ -12,15 +13,23 @@ except ImportError:
     firestore = None
 
 from backend.auth_router import get_current_user
-from backend.database import get_db, hybrid_search_knowledge
-from backend.graph.csr_engine import CsrKnowledgeGraph, DOMAINS_8D, compute_advanced_metrics, compute_q_omnis
-from backend.models import User
+from backend.config import get_settings
+from backend.database import get_audit_db, get_db, hybrid_search_knowledge
+from backend.graph.csr_engine import (
+    CsrKnowledgeGraph,
+    DOMAINS_8D,
+    compute_advanced_metrics,
+    compute_q_omnis,
+    get_age_graph_repository,
+)
+from backend.models import User, ZkAuditLedgerEntry
 from backend.schemas.akge import (
     CryptographicAuditCommitment,
     GateEvaluationResult,
     Matrix8DState,
     ProofOfNecessityLog,
 )
+from backend.security.zk_ledger_service import ZkAuditLedgerService
 
 logger = logging.getLogger("omnis.audit")
 
@@ -61,6 +70,7 @@ class AkgeEvaluateRequest(BaseModel):
 async def log_proof_of_necessity(
     req: PoNLogRequest,
     current_user: User = Depends(get_current_user),
+    audit_db: AsyncSession = Depends(get_audit_db),
 ):
     timestamp = int(time.time())
     is_admin = getattr(current_user, "role", "STANDARD_USER") == "ADMIN_OPERATOR"
@@ -85,16 +95,35 @@ async def log_proof_of_necessity(
         prev_commitment_hash=req.prevCommitmentHash,
     )
 
+    ledger_record = None
+    try:
+        ledger_record = await ZkAuditLedgerService.append_entry(
+            audit_db,
+            user_id=str(current_user.id),
+            query=canonical_query,
+            r_systemic=r_sys,
+            tier=tier,
+            nonce=zk_commitment.nonce,
+            override_active=effective_override,
+            payload={"actionType": req.actionType, "details": req.details},
+        )
+    except Exception as ledger_exc:
+        try:
+            await audit_db.rollback()
+        except Exception:
+            pass
+        logger.warning("zk_audit_ledger append skipped/fallback: %s", ledger_exc)
+
     doc_data = req.model_dump()
     doc_data["userId"] = str(current_user.id)
     doc_data["timestamp"] = timestamp
-    doc_data["commitmentHash"] = zk_commitment.commitment_hash
-    doc_data["prevCommitmentHash"] = zk_commitment.prev_commitment_hash
+    doc_data["commitmentHash"] = ledger_record.commitment_hash if ledger_record else zk_commitment.commitment_hash
+    doc_data["prevCommitmentHash"] = ledger_record.prev_hash if ledger_record else zk_commitment.prev_commitment_hash
     doc_data["commitmentAlgorithm"] = zk_commitment.algorithm
     doc_data["overrideActive"] = effective_override
     doc_data["proofOfNecessity"] = pon_schema.model_dump()
 
-    if firestore is not None:
+    if not get_settings().USE_OSS_POSTGRES_SYNC and firestore is not None:
         try:
             db_fs = firestore.Client(database=FIRESTORE_DATABASE_ID)
             doc_ref = db_fs.collection("audit_logs").document()
@@ -104,13 +133,74 @@ async def log_proof_of_necessity(
 
     return {
         "status": "success",
-        "commitmentHash": zk_commitment.commitment_hash,
-        "prevCommitmentHash": zk_commitment.prev_commitment_hash,
+        "commitmentHash": ledger_record.commitment_hash if ledger_record else zk_commitment.commitment_hash,
+        "prevCommitmentHash": ledger_record.prev_hash if ledger_record else zk_commitment.prev_commitment_hash,
         "commitmentAlgorithm": zk_commitment.algorithm,
         "overrideActive": effective_override,
+        "ledgerSeqId": ledger_record.seq_id if ledger_record else None,
         "proofOfNecessity": pon_schema.model_dump(),
         "auditCommitment": zk_commitment.model_dump(),
         "zkCommitment": zk_commitment.model_dump(),
+    }
+
+
+@router.get("/ledger/verify")
+async def verify_zk_audit_ledger(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ověří kryptografickou kontinuitu SHA-256 řetězce v `zk_audit_ledger` (pouze ADMIN_OPERATOR)."""
+    if getattr(current_user, "role", "STANDARD_USER") != "ADMIN_OPERATOR":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nedostatečná oprávnění: verifikace zk_audit_ledger vyžaduje roli ADMIN_OPERATOR.",
+        )
+    verification = await ZkAuditLedgerService.verify_database_chain(db)
+    return {
+        "status": "VALID" if verification.valid else "COMPROMISED",
+        "valid": verification.valid,
+        "total_entries": verification.total_entries,
+        "broken_at_seq_id": verification.broken_at_seq_id,
+        "reason": verification.reason,
+        "head_commitment_hash": verification.head_commitment_hash,
+    }
+
+
+@router.get("/ledger/entries")
+async def list_zk_audit_ledger_entries(
+    limit: int = Query(50, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Vrátí posledních N záznamů append-only řetězce `zk_audit_ledger` (pouze ADMIN_OPERATOR)."""
+    if getattr(current_user, "role", "STANDARD_USER") != "ADMIN_OPERATOR":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nedostatečná oprávnění: čtení zk_audit_ledger vyžaduje roli ADMIN_OPERATOR.",
+        )
+    if getattr(db, "bind", None) is None:
+        return {"entries": [], "count": 0}
+    res = await db.execute(
+        select(ZkAuditLedgerEntry).order_by(ZkAuditLedgerEntry.seq_id.desc()).limit(limit)
+    )
+    rows = res.scalars().all()
+    return {
+        "count": len(rows),
+        "entries": [
+            {
+                "seq_id": int(r.seq_id),
+                "entry_id": str(r.entry_id),
+                "user_id": str(r.user_id),
+                "query_hash": str(r.query_hash),
+                "r_systemic": float(r.r_systemic),
+                "tier": str(r.tier),
+                "nonce": str(r.nonce),
+                "override_active": bool(r.override_active),
+                "prev_hash": str(r.prev_hash),
+                "commitment_hash": str(r.commitment_hash),
+            }
+            for r in rows
+        ],
     }
 
 
@@ -141,10 +231,11 @@ async def evaluate_akge_8d(
         priority_profile=req.priority_profile or "Balanced Core",
     )
 
+    age_repo = get_age_graph_repository()
     graph = CsrKnowledgeGraph.build_8d_tensor_graph(scores)
     topo = graph.calculate_topological_invariants(scores)
     percolation_critical, percolation_msg = graph.evaluate_percolation_bypass(scores)
-    do_sys_law = graph.evaluate_do_calculus("SYS", "LAW")
+    do_sys_law = age_repo.evaluate_g3_do_calculus("SYS", "LAW", intervention_value=0.95, current_values=scores)
     adv_metrics = compute_advanced_metrics(scores, topo["shannon_entropy"], req.latency_ms)
     q_omnis = compute_q_omnis(scores, topo["shannon_entropy"], topo["betti_1"])
 
@@ -154,7 +245,7 @@ async def evaluate_akge_8d(
 
     g1_ok = len(req.query.strip()) >= 3
     g2_ok = len(req.query.strip().split()) >= 2
-    g3_ok = bool(do_sys_law.get("shortest_causal_path"))
+    g3_ok = bool(do_sys_law.get("g3_passed")) and bool(do_sys_law.get("shortest_causal_path"))
     g4_ok = not any(bad in q_lower for bad in ("ransomware", "malware", "bypass security", "social scoring"))
     g5_ok = "ignore previous" not in q_lower and "system override" not in q_lower
     g6_ok = topo["shannon_entropy"] < 2.08
@@ -177,7 +268,7 @@ async def evaluate_akge_8d(
     compression_rate = 0.70 if sigma < 0.20 else (0.30 if sigma < 0.60 else 0.0)
     pon = ProofOfNecessityLog(
         trigger_vector=f"Query('{req.query[:48]}') -> AKGE-8D[profile={matrix_state.priority_profile}]",
-        exclusion_proof="Dense tensor O(V^2) and ungrounded LLM pass-through rejected; CSR + 6-Gate Ladder enforced.",
+        exclusion_proof="Dense tensor O(V^2) and ungrounded LLM pass-through rejected; Apache AGE CSR + 6-Gate Ladder enforced.",
         minimization_check=f"Bounded to 8 invariant domains; compression={int(compression_rate * 100)}%, sigma={sigma:.2f}.",
         system_tension_sigma=sigma,
     )
@@ -191,12 +282,31 @@ async def evaluate_akge_8d(
         override_active=override_active,
     )
 
+    try:
+        await ZkAuditLedgerService.append_entry(
+            db,
+            user_id=str(current_user.id),
+            query=req.query,
+            r_systemic=matrix_state.harmonic_mean_hw,
+            tier=tier,
+            nonce=zk.nonce,
+            override_active=override_active,
+            payload={"q_omnis": q_omnis, "g3_snapshot_version": do_sys_law.get("snapshot_version")},
+        )
+    except Exception as ledger_exc:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        logger.warning("AKGE ledger append skipped: %s", ledger_exc)
+
     rag_hits = await hybrid_search_knowledge(
         query_text=req.query,
         query_embedding=req.query_embedding,
         limit=3,
         rrf_k=60,
         db=db,
+        user_id=str(current_user.id),
     )
 
     return {

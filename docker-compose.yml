@@ -2,28 +2,78 @@ version: "3.9"
 
 services:
   # ==========================================================
-  # Database: PostgreSQL with pgvector extension pre-installed
+  # Unified PostgreSQL 17 Engine (pgvector + Apache AGE + pgcrypto + Logical WAL)
   # ==========================================================
   db:
-    image: pgvector/pgvector:pg16
-    container_name: omnis_pgvector
+    build:
+      context: .
+      dockerfile: backend/db/Dockerfile.postgres
+    container_name: omnis_pg17
     restart: unless-stopped
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "shared_preload_libraries=age"
+      - "-c"
+      - "max_connections=100"
     environment:
-      POSTGRES_DB: omnis_db
-      POSTGRES_USER: omnis_user
-      POSTGRES_PASSWORD: omnis_secure_pass
+      POSTGRES_DB: ${POSTGRES_DB:-omnis_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
+      POSTGRES_AUDIT_PASSWORD: ${POSTGRES_AUDIT_PASSWORD:-}
+      POSTGRES_SYNC_PASSWORD: ${POSTGRES_SYNC_PASSWORD:-}
     ports:
       - "5432:5432"
     volumes:
-      - pgvector_data:/var/lib/postgresql/data
+      - pg17_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./backend/db/02-apply-role-passwords.sh:/docker-entrypoint-initdb.d/02-apply-role-passwords.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U omnis_user -d omnis_db"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-omnis_db} && psql -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-omnis_db} -tAc \"SELECT 1 FROM pg_extension WHERE extname IN ('vector','age','pgcrypto')\" | wc -l | grep -qx 3"
+        ]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
 
   # ==========================================================
-  # Backend: Python 3.11 / FastAPI with Google GenAI SDK
+  # ElectricSQL Sync Engine (Apache-2.0) via Logical Replication
+  # ==========================================================
+  electric:
+    image: electricsql/electric:latest
+    container_name: omnis_electric
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_SYNC_USER:-postgres}:${POSTGRES_SYNC_PASSWORD:-${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}}@db:5432/${POSTGRES_DB:-omnis_db}?sslmode=disable
+      ELECTRIC_INSECURE: ${ELECTRIC_INSECURE:-true}
+      ELECTRIC_PORT: 3000
+      ELECTRIC_STORAGE_DIR: /var/lib/electric/data
+    ports:
+      - "3000:3000"
+    volumes:
+      - electric_data:/var/lib/electric/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ==========================================================
+  # Backend: Python 3.11 / FastAPI with Open-Weights & PG17 Stack
   # ==========================================================
   backend:
     build:
@@ -34,13 +84,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      electric:
+        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://omnis_user:omnis_secure_pass@db:5432/omnis_db
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      ENV: ${ENV:-development}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_APP_USER:-postgres}:${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}}@db:5432/${POSTGRES_DB:-omnis_db}
+      AUDIT_DATABASE_URL: postgresql+asyncpg://${POSTGRES_AUDIT_USER:-postgres}:${POSTGRES_AUDIT_PASSWORD:-${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}}@db:5432/${POSTGRES_DB:-omnis_db}
+      ELECTRIC_URL: ${ELECTRIC_URL:-http://electric:3000}
+      USE_OSS_POSTGRES_SYNC: ${USE_OSS_POSTGRES_SYNC:-true}
+      LLM_PROVIDER_MODE: ${LLM_PROVIDER_MODE:-gemma4_local}
+      GEMMA4_API_BASE_URL: ${GEMMA4_API_BASE_URL:-http://host.docker.internal:11434/v1}
+      GEMMA4_MODEL_NAME: ${GEMMA4_MODEL_NAME:-gemma4:e4b}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:?AUDIT_HMAC_KEY must be set in .env}
+      OMNIS_SYNC_API_KEY: ${OMNIS_SYNC_API_KEY:?OMNIS_SYNC_API_KEY must be set in .env}
       PORT: 8000
     ports:
       - "8000:8000"
 
 volumes:
-  pgvector_data:
+  pg17_data:
+  electric_data:

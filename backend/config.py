@@ -50,6 +50,13 @@ class OmnisSettings(BaseSettings):
         "true",
         "yes",
     )
+    USE_OSS_POSTGRES_SYNC: bool = os.getenv("USE_OSS_POSTGRES_SYNC", "true").lower() in ("1", "true", "yes")
+    AUDIT_DATABASE_URL: str = os.getenv("AUDIT_DATABASE_URL", "")
+    ELECTRIC_URL: str = os.getenv("ELECTRIC_URL", "http://electric:3000")
+    AGE_GRAPH_NAME: str = os.getenv("AGE_GRAPH_NAME", "omnis_causal_graph")
+    LLM_PROVIDER_MODE: str = os.getenv("LLM_PROVIDER_MODE", "gemma4_local")
+    GEMMA4_API_BASE_URL: str = os.getenv("GEMMA4_API_BASE_URL", "http://localhost:8001/v1")
+    GEMMA4_MODEL_NAME: str = os.getenv("GEMMA4_MODEL_NAME", "google/gemma-4-27b-it")
 
     @property
     def is_production(self) -> bool:
@@ -102,6 +109,13 @@ def get_settings() -> OmnisSettings:
         CLOUD_KMS_KEY_NAME=os.getenv("CLOUD_KMS_KEY_NAME", ""),
         ENABLE_FIRESTORE_CQRS_PROJECTION=os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "true").lower()
         in ("1", "true", "yes"),
+        USE_OSS_POSTGRES_SYNC=os.getenv("USE_OSS_POSTGRES_SYNC", "true").lower() in ("1", "true", "yes"),
+        AUDIT_DATABASE_URL=os.getenv("AUDIT_DATABASE_URL", ""),
+        ELECTRIC_URL=os.getenv("ELECTRIC_URL", "http://electric:3000"),
+        AGE_GRAPH_NAME=os.getenv("AGE_GRAPH_NAME", "omnis_causal_graph"),
+        LLM_PROVIDER_MODE=os.getenv("LLM_PROVIDER_MODE", "gemma4_local"),
+        GEMMA4_API_BASE_URL=os.getenv("GEMMA4_API_BASE_URL", "http://localhost:8001/v1"),
+        GEMMA4_MODEL_NAME=os.getenv("GEMMA4_MODEL_NAME", "google/gemma-4-27b-it"),
     )
     settings.validate_production_secrets()
     return settings

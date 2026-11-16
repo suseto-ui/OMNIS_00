@@ -268,3 +268,106 @@ class KnowledgeNode(Base):
     usage_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+
+# ==========================================================
+# FÁZE 2: Open-Source PostgreSQL 17 Modely (pgvector + ElectricSQL + ZK Ledger)
+# ==========================================================
+
+class RagMemory64D(Base):
+    """64D vektorová RAG paměť s HNSW kosinovým indexem v PostgreSQL 17."""
+    __tablename__ = "rag_memory_64d"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(128), nullable=False, index=True)
+    thread_id = Column(String(128), nullable=False, default="thread_main", index=True)
+    domain = Column(String(64), nullable=False, default="SYSTEMS_INTELLIGENCE")
+    content = Column(Text, nullable=False)
+    embedding = Column(_vector_64_type(), nullable=False)
+    importance_score = Column(Float, nullable=False, default=1.0)
+    metadata_json = Column(JSON, nullable=False, default=dict)
+    idempotency_key = Column(String(128), unique=True, nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class TensorState8D(Base):
+    """8D stavový tenzor a 28-párová korelační matice synchronizovaná přes ElectricSQL."""
+    __tablename__ = "tensor_states_8d"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(128), nullable=False, index=True)
+    session_id = Column(String(128), nullable=False, default="thread_main", index=True)
+    val_sys = Column(Float, nullable=False, default=0.5)
+    val_econ = Column(Float, nullable=False, default=0.5)
+    val_psych = Column(Float, nullable=False, default=0.5)
+    val_eco = Column(Float, nullable=False, default=0.5)
+    val_law = Column(Float, nullable=False, default=0.5)
+    val_sec = Column(Float, nullable=False, default=0.5)
+    val_phys = Column(Float, nullable=False, default=0.5)
+    val_soc = Column(Float, nullable=False, default=0.5)
+    correlation_tensor_28 = Column(JSON, nullable=False, default=list)
+    system_stress_sigma = Column(Float, nullable=False, default=0.0)
+    shannon_entropy = Column(Float, nullable=False, default=0.0)
+    percolation_active = Column(Boolean, nullable=False, default=False)
+    priority_profile = Column(String(64), nullable=False, default="Balanced Core")
+    state_hash = Column(String(128), nullable=False)
+    idempotency_key = Column(String(128), unique=True, nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class GoalRecord(Base):
+    """Uživatelské a systémové cíle synchronizované obousměrně přes ElectricSQL."""
+    __tablename__ = "goals"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(128), nullable=False, index=True)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=False, default="")
+    status = Column(String(64), nullable=False, default="ACTIVE", index=True)
+    priority = Column(Integer, nullable=False, default=3)
+    progress = Column(Float, nullable=False, default=0.0)
+    tasks_json = Column(JSON, nullable=False, default=list)
+    idempotency_key = Column(String(128), unique=True, nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class RagFragmentRecord(Base):
+    """Fragmenty RAG paměti pro ElectricSQL Shape synchronizaci na Android Edge."""
+    __tablename__ = "rag_fragments"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(128), nullable=False, index=True)
+    thread_id = Column(String(128), nullable=False, default="thread_main", index=True)
+    domain = Column(String(64), nullable=False, default="SYSTEMS_INTELLIGENCE")
+    title = Column(String(255), nullable=False, default="")
+    summary = Column(Text, nullable=False, default="")
+    importance_score = Column(Float, nullable=False, default=1.0)
+    embedding_json = Column(JSON, nullable=False, default=list)
+    idempotency_key = Column(String(128), unique=True, nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ZkAuditLedgerEntry(Base):
+    """
+    Striktě append-only kryptografický auditní řetězec (SHA-256 Chain).
+    V PostgreSQL 17 je chráněn triggery trg_zk_audit_ledger_before_insert a trg_zk_audit_ledger_immutable.
+    """
+    __tablename__ = "zk_audit_ledger"
+
+    seq_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    entry_id = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(128), nullable=False, index=True)
+    query_hash = Column(String(64), nullable=False)
+    r_systemic = Column(Float, nullable=False)
+    tier = Column(String(32), nullable=False)
+    nonce = Column(String(64), nullable=False)
+    override_active = Column(Boolean, nullable=False, default=False)
+    prev_hash = Column(String(64), nullable=False, default="GENESIS")
+    commitment_hash = Column(String(64), unique=True, nullable=False)
+    payload_json = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+

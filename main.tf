@@ -15,15 +15,19 @@ provider "google" {
 
 # 1. Aktivace základních Google Cloud API
 resource "google_project_service" "enabled_apis" {
-  for_each = toset(concat([
-    "run.googleapis.com",
-    "secretmanager.googleapis.com",
-    "artifactregistry.googleapis.com",
-    "cloudbuild.googleapis.com",
-    "firestore.googleapis.com",
-    "iam.googleapis.com",
-    "billingbudgets.googleapis.com"
-  ], var.enable_cloud_sql ? ["sqladmin.googleapis.com"] : [], var.enable_cloud_kms ? ["cloudkms.googleapis.com"] : []))
+  for_each = toset(concat(
+    [
+      "run.googleapis.com",
+      "secretmanager.googleapis.com",
+      "artifactregistry.googleapis.com",
+      "cloudbuild.googleapis.com",
+      "firestore.googleapis.com",
+      "iam.googleapis.com",
+      "billingbudgets.googleapis.com"
+    ],
+    var.enable_cloud_sql ? ["sqladmin.googleapis.com", "servicenetworking.googleapis.com"] : [],
+    var.enable_cloud_kms ? ["cloudkms.googleapis.com"] : []
+  ))
   project            = var.project_id
   service            = each.key
   disable_on_destroy = false
@@ -95,7 +99,75 @@ resource "google_secret_manager_secret" "admin_secret_hashes" {
   }
 }
 
-# 4. Google Cloud Run (Cost-Optimized: Scale-to-Zero = 0 USD idle, Firestore Primary)
+# 4. Volitelný Cloud SQL PostgreSQL 17 (aktivován pouze při var.enable_cloud_sql = true)
+# Připraveno pro logical decoding (ElectricSQL), pgvector a IAM autentizaci bez statických hesel v IaC.
+resource "google_service_networking_connection" "private_vpc_connection" {
+  count                   = var.enable_cloud_sql ? 1 : 0
+  depends_on              = [google_project_service.enabled_apis]
+  network                 = google_compute_network.omnis_network[0].id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_ip_address[0].name]
+}
+
+resource "google_sql_database_instance" "omnis_pg17" {
+  count               = var.enable_cloud_sql ? 1 : 0
+  depends_on          = [google_service_networking_connection.private_vpc_connection]
+  name                = "omnis-pg17-core"
+  database_version    = "POSTGRES_17"
+  region              = var.region
+  deletion_protection = var.cloud_sql_deletion_protection
+
+  settings {
+    tier              = var.cloud_sql_tier
+    availability_type = "ZONAL"
+    disk_size         = var.cloud_sql_disk_size_gb
+    disk_type         = "PD_SSD"
+    disk_autoresize   = false
+
+    ip_configuration {
+      ipv4_enabled                                  = false
+      private_network                               = google_compute_network.omnis_network[0].id
+      enable_private_path_for_google_cloud_services = true
+    }
+
+    backup_configuration {
+      enabled                        = true
+      point_in_time_recovery_enabled = true
+    }
+
+    database_flags {
+      name  = "cloudsql.logical_decoding"
+      value = "on"
+    }
+    database_flags {
+      name  = "max_replication_slots"
+      value = "10"
+    }
+    database_flags {
+      name  = "max_wal_senders"
+      value = "10"
+    }
+    database_flags {
+      name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
+  }
+}
+
+resource "google_sql_database" "omnis_db" {
+  count    = var.enable_cloud_sql ? 1 : 0
+  name     = var.db_name
+  instance = google_sql_database_instance.omnis_pg17[0].name
+}
+
+resource "google_sql_user" "omnis_cloud_run_iam_user" {
+  count    = var.enable_cloud_sql ? 1 : 0
+  name     = trimsuffix(google_service_account.cloud_run_sa.email, ".gserviceaccount.com")
+  instance = google_sql_database_instance.omnis_pg17[0].name
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
+}
+
+# 5. Google Cloud Run (Cost-Optimized: Scale-to-Zero = 0 USD idle)
 resource "google_cloud_run_v2_service" "omnis_backend" {
   depends_on = [
     google_project_service.enabled_apis,
@@ -117,8 +189,8 @@ resource "google_cloud_run_v2_service" "omnis_backend" {
     service_account = google_service_account.cloud_run_sa.email
 
     scaling {
-      min_instance_count = 0  # 100% Scale-to-zero pro nulové fixní náklady
-      max_instance_count = 3  # Prevence přetečení rozpočtu
+      min_instance_count = 0 # 100% Scale-to-zero pro nulové fixní náklady
+      max_instance_count = 3 # Prevence přetečení rozpočtu
     }
 
     containers {
@@ -129,7 +201,7 @@ resource "google_cloud_run_v2_service" "omnis_backend" {
           cpu    = "1"
           memory = "512Mi"
         }
-        cpu_idle = true  # CPU alokováno POUZE během zpracování dotazu
+        cpu_idle = true # CPU alokováno POUZE během zpracování dotazu
       }
 
       env {
@@ -149,6 +221,26 @@ resource "google_cloud_run_v2_service" "omnis_backend" {
         value = var.project_id
       }
       env {
+        name  = "USE_OSS_POSTGRES_SYNC"
+        value = tostring(var.use_oss_postgres_sync)
+      }
+      env {
+        name  = "ELECTRIC_URL"
+        value = var.electric_url
+      }
+      env {
+        name  = "LLM_PROVIDER_MODE"
+        value = var.llm_provider_mode
+      }
+      env {
+        name  = "GEMMA4_API_BASE_URL"
+        value = var.gemma4_api_base_url
+      }
+      env {
+        name  = "GEMMA4_MODEL_NAME"
+        value = var.gemma4_model_name
+      }
+      env {
         name  = "GEMINI_MODEL"
         value = "gemini-2.5-flash"
       }
@@ -162,7 +254,7 @@ resource "google_cloud_run_v2_service" "omnis_backend" {
       }
       env {
         name  = "ENABLE_FIRESTORE_CQRS_PROJECTION"
-        value = "true"
+        value = tostring(!var.use_oss_postgres_sync)
       }
       env {
         name  = "ENABLE_CLOUD_KMS"
@@ -242,7 +334,7 @@ resource "google_cloud_run_v2_service" "omnis_backend" {
   }
 }
 
-# 5. Veřejný přístup pro Cloud Run API
+# 6. Veřejný přístup pro Cloud Run API
 resource "google_cloud_run_service_iam_member" "public_access" {
   location = google_cloud_run_v2_service.omnis_backend.location
   service  = google_cloud_run_v2_service.omnis_backend.name
@@ -250,7 +342,7 @@ resource "google_cloud_run_service_iam_member" "public_access" {
   member   = "allUsers"
 }
 
-# 6. Rozpočtový strážce (Google Cloud Budget Alert < 5 USD)
+# 7. Rozpočtový strážce (Google Cloud Budget Alert < 5 USD)
 resource "google_billing_budget" "budget_limit" {
   count           = var.billing_account_id != "" ? 1 : 0
   billing_account = var.billing_account_id
