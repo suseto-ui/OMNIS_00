@@ -48,7 +48,7 @@ graph TD
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                     PERSISTENCE & CLOUD SYNCHRONIZACE                           │
 │  ┌──────────────────────────────────┐        ┌───────────────────────────────┐  │
-│  │ Room Database v12 (SQLite)       │ ─────► │ Cloud SQL PostgreSQL          │  │
+│  │ Room Database v18 (SQLite)       │ ─────► │ Cloud SQL PostgreSQL          │  │
 │  │ (Offline-First Šifrovaná Paměť)  │        │ (pgvector Dual-Write Replikace)│  │
 │  └──────────────────────────────────┘        └───────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -155,8 +155,8 @@ Aplikace striktně odlišuje uživatelský zážitek podle aktivní role:
 - Zobrazuje surové 8D vektory, CSR topologii, telemetrii paměti RAM a časové odezvy.
 - Obsahuje telemetrický mikro-odznak (např. `[AKGE-8D: 94% UKOTVENO]`) u každé zprávy.
 - Vyžaduje ověření práv a umožňuje ruční přepisy stavu skrze flag `MODIFY_SYSTEM_STATE` (`OVERRIDE_ACTIVE`).
-- Poskytuje kryptografické otisky odpovědí ZK-SNARK:
-  $$\text{CommitmentHash} = \text{SHA-256}(\text{"OMNIS-ZK-PROOF"} \parallel \text{QueryHash} \parallel \mathcal{R}_{\text{systemic}} \parallel \text{Tier} \parallel \text{Nonce})$$
+- Poskytuje kryptografické otisky odpovědí HMAC-SHA256 Hash-Chain:
+  $$\text{CommitmentHash} = \text{HMAC-SHA256}(\text{"OMNIS-ZK-PROOF"} \parallel \text{QueryHash} \parallel \mathcal{R}_{\text{systemic}} \parallel \text{Tier} \parallel \text{PrevHash})$$
 
 ---
 
@@ -167,16 +167,16 @@ Aplikace striktně odlišuje uživatelský zážitek podle aktivní role:
 | **Presentation (UI)** | Jetpack Compose (M3) | 8D Canvas Radar, Octagon Dashboard, Timeline Chat, Reaktivní grafy |
 | **Domain Logic** | Kotlin 2.0 Coroutines | `OmnisCorrelationEngine`, `OmnisConfidenceGate`, 6-tier Refusal Ladder |
 | **Backend & Graph** | Python FastAPI / CSR Graph | `CsrKnowledgeGraph`, Do-Calculus simulator, 8D Tensor Evaluator |
-| **Persistence** | Room DB v12 & SQLite | Offline-first paměť, multi-threading podpora, fragmenty a artefakty |
+| **Persistence** | Room DB v18 & SQLite | Offline-first šifrovaná vektorová a relakční paměť s multi-threadingem |
 | **API & Kaskáda** | Gemini Flash / Pro REST API | Multi-key pool rotace, asynchronní streaming SSE odpovědí, failover |
-| **Cloud Sync** | PostgreSQL Cloud SQL | Asynchronní dávková replikace zpráv, telemetrie a ZK auditních stop |
+| **Cloud Sync** | PostgreSQL (pgvector) / Firestore | Asynchronní dávková replikace zpráv, telemetrie a HMAC-SHA256 auditních stop |
 
 ---
 
 ## 🚀 6. Příkazy pro Sestavení a Verifikaci
 
 ```bash
-# Spuštění kompletní sady 143 unit a Robolectric testů
+# Spuštění kompletní sady 207 unit a Robolectric testů
 gradle :app:testDebugUnitTest
 
 # Sestavení finálního debug balíčku aplikace

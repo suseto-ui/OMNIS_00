@@ -119,7 +119,7 @@ substitutions:
   _TAG: "manual"
   _REPOSITORY: "omnis-repo"
   _SERVICE_NAME: "omnis-backend"
-  _FIREBASE_PROJECT_ID: "omnis-508519"
+  _FIREBASE_PROJECT_ID: "gen-lang-client-0328950802"
   _FIRESTORE_DATABASE_ID: "ai-studio-android-omnis-fba4ba28-3ec2-4eaf-a1a7-338554af8dfe"
   _CLOUDSQL_INSTANCE: ""
 

@@ -59,7 +59,7 @@ async def test_firestore_sync():
     try:
         # Ověření přítomnosti konfigurace / SDK
         import google.cloud.firestore as firestore
-        project_id = os.environ.get("FIREBASE_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT") or "omnis-508519"
+        project_id = os.environ.get("FIREBASE_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT") or "gen-lang-client-0328950802"
         database_id = os.environ.get("FIRESTORE_DATABASE_ID") or "ai-studio-android-omnis-fba4ba28-3ec2-4eaf-a1a7-338554af8dfe"
         logger.info(f"✓ Firebase Firestore SDK nalezeno. Project ID: {project_id}, Database: {database_id}")
         return True

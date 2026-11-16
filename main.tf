@@ -138,7 +138,7 @@ resource "google_cloud_run_v2_service" "omnis_backend" {
       }
       env {
         name  = "FIREBASE_PROJECT_ID"
-        value = "omnis-508519"
+        value = var.project_id
       }
       env {
         name  = "FIRESTORE_DATABASE_ID"
