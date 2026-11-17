@@ -1,0 +1,81 @@
+name: O.M.N.I.S. APEX Zero-Cost Sovereign CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  backend-sovereign-audit:
+    name: Backend FastAPI Zero-Cost Audit & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          pip install --no-cache-dir -r requirements.txt pytest pytest-cov ruff bandit
+
+      - name: Static Code Analysis & Security Lint
+        run: |
+          ruff check backend/ scripts/
+          bandit -r backend/ -ll --exclude backend/tests/
+
+      - name: Run Backend Pytest Suite
+        run: |
+          export PYTHONPATH=.
+          pytest backend/ -v --cov=backend --cov-fail-under=75
+
+  android-sovereign-test:
+    name: Android Robolectric & Unit Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 & Android SDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: "gradle"
+      - uses: android-actions/setup-android@v3
+
+      - name: Run Robolectric & Unit Tests
+        run: |
+          chmod +x gradlew || true
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Build Release Bundle (AAB)
+        run: |
+          ./gradlew :app:bundleRelease --no-daemon --stacktrace
+
+  deploy-to-oci-ampere:
+    name: Zero-Cost Deploy to OCI Always Free VM
+    needs: [backend-sovereign-audit, android-sovereign-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH to OCI VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.OCI_VM_HOST }}
+          username: ${{ secrets.OCI_VM_USER }}
+          key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/omnis
+            git pull origin main
+            docker compose down
+            docker compose up --build -d
+            docker system prune -f

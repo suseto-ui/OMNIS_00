@@ -1,0 +1,94 @@
+{
+  "topology_version": "7.0",
+  "engine": "O.M.N.I.S. APEX/SIGMA/OMEGA",
+  "nodes": [
+    {
+      "node_id": "NODE-EPI-001",
+      "plane": "Epistemic",
+      "subsystem": "Ontology",
+      "vault_path": "_OMNIS_VAULT/01_EPISTEMIC_PLANE/entities_registry.json",
+      "status": "ACTIVE",
+      "integrity_hash": "e3b0c442..."
+    },
+    {
+      "node_id": "NODE-SYN-001",
+      "plane": "Synthetic",
+      "subsystem": "SIGMA-OMEGA",
+      "vault_path": "_OMNIS_VAULT/02_SYNTHETIC_PLANE/apex_impact_matrices.json",
+      "status": "ACTIVE",
+      "integrity_hash": "8f4b2a11..."
+    },
+    {
+      "node_id": "NODE-PRX-001",
+      "plane": "Praxeological",
+      "subsystem": "Code",
+      "vault_path": "_OMNIS_VAULT/03_PRAXEOLOGICAL_PLANE/code_artifacts/OmnisOrchestrator.kt",
+      "status": "REMEDIATED",
+      "integrity_hash": "7c9e1f33..."
+    },
+    {
+      "node_id": "ERR-001",
+      "plane": "Audit",
+      "subsystem": "Defect",
+      "vault_path": "_OMNIS_VAULT/04_AUDIT_AND_REMEDIATION/defect_registry.md",
+      "status": "RESOLVED",
+      "integrity_hash": "1a2b3c4d..."
+    },
+    {
+      "node_id": "FIX-001",
+      "plane": "Remediation",
+      "subsystem": "Blueprint",
+      "vault_path": "_OMNIS_VAULT/04_AUDIT_AND_REMEDIATION/remediation_blueprints.md",
+      "status": "DEFINITIVE_LOCKED",
+      "integrity_hash": "99ff88aa..."
+    },
+    {
+      "node_id": "IMP-001",
+      "plane": "Verification",
+      "subsystem": "Matrix",
+      "vault_path": "_OMNIS_VAULT/04_AUDIT_AND_REMEDIATION/impact_verifications.md",
+      "status": "VERIFIED",
+      "integrity_hash": "55aa44bb..."
+    },
+    {
+      "node_id": "STEP-001",
+      "plane": "Roadmap",
+      "subsystem": "Execution",
+      "vault_path": "_OMNIS_VAULT/04_AUDIT_AND_REMEDIATION/execution_roadmap.md",
+      "status": "SCHEDULED",
+      "integrity_hash": "11223344..."
+    }
+  ],
+  "edges": [
+    {
+      "source": "NODE-EPI-001",
+      "target": "NODE-SYN-001",
+      "coupling": "Ontological to Synthetic"
+    },
+    {
+      "source": "NODE-SYN-001",
+      "target": "NODE-PRX-001",
+      "coupling": "Synthetic to Code"
+    },
+    {
+      "source": "NODE-SYN-001",
+      "target": "ERR-001",
+      "coupling": "Red-Team Defect Isolation"
+    },
+    {
+      "source": "ERR-001",
+      "target": "FIX-001",
+      "coupling": "Defect to Remediation"
+    },
+    {
+      "source": "FIX-001",
+      "target": "IMP-001",
+      "coupling": "Remediation to Impact Verification"
+    },
+    {
+      "source": "IMP-001",
+      "target": "STEP-001",
+      "coupling": "Verification to Execution Roadmap"
+    }
+  ]
+}

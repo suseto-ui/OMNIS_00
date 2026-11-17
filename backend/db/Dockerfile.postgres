@@ -1,5 +1,6 @@
 # ==============================================================================
-# O.M.N.I.S. APEX v4.5 - PostgreSQL 17 Open-Source Unified Engine
+# O.M.N.I.S. APEX v4.5 - PostgreSQL 17 Multi-Engine Dockerfile
+# Architected for OCI Always Free ARM Ampere A1 (aarch64) & x86_64
 # Includes: pgvector (HNSW 64D), Apache AGE (openCypher causal graph), pgcrypto
 # ==============================================================================
 FROM postgres:17-bookworm
@@ -20,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-17-pgvector \
     && rm -rf /var/lib/apt/lists/*
 
-# Build and install Apache AGE for PostgreSQL 17
+# Build and install Apache AGE from official source for PostgreSQL 17
 RUN git clone --depth 1 --branch "${AGE_VERSION}" https://github.com/apache/age.git /tmp/age || \
     git clone --depth 1 --branch "master" https://github.com/apache/age.git /tmp/age \
     && cd /tmp/age \
