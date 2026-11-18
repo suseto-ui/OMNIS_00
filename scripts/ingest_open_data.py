@@ -3,7 +3,7 @@ O.M.N.I.S. APEX v4.5 - Open Data ETL Ingestion Pipeline (`scripts/ingest_open_da
 Downloads and ingests open sovereign datasets into PostgreSQL 17:
   1. Retraction Watch Database (Crossref GitLab CSV dump) -> `retraction_watch_blacklist` (Gate G5)
   2. CISA Known Exploited Vulnerabilities (KEV) & MITRE ATT&CK STIX 2.1 -> `causal_nodes` / `causal_edges` (Gate G3)
-  3. OpenAlex REST API -> `rag_embeddings_64d` (64D RAG memory corpus)
+  3. OpenAlex REST API -> `rag_memory_64d` (64D RAG memory corpus)
 """
 
 from __future__ import annotations
@@ -104,7 +104,7 @@ async def ingest_openalex_abstracts() -> int:
             try:
                 await session.execute(
                     text("""
-                        INSERT INTO public.rag_embeddings_64d
+                        INSERT INTO public.rag_memory_64d
                             (user_id, thread_id, domain, content, embedding, importance_score, idempotency_key)
                         VALUES
                             ('etl_system', 'thread_openalex', 'SYSTEMS_INTELLIGENCE', :content, CAST(:emb AS vector(64)), 0.90, :ikey)
@@ -121,7 +121,7 @@ async def ingest_openalex_abstracts() -> int:
                 logger.warning(f"Failed to insert OpenAlex work: {e}")
         await session.commit()
     await engine.dispose()
-    logger.info(f"OpenAlex ETL complete: {count} scholarly abstracts vectorized to rag_embeddings_64d.")
+    logger.info(f"OpenAlex ETL complete: {count} scholarly abstracts vectorized to rag_memory_64d.")
     return count
 
 async def main():

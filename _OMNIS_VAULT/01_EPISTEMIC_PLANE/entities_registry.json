@@ -1,0 +1,130 @@
+{
+  "registry_version": "7.0",
+  "project": "O.M.N.I.S. APEX",
+  "system_name": "OMNIS by Suseto",
+  "application_id": "com.aistudio.omnis.app.bnndfx",
+  "node_id": "NODE-EPI-001",
+  "plane": "Epistemic",
+  "gdpr_compliance": "Article 15 (Right of Access) & Article 25 (Data Protection by Design)",
+  "nis2_alignment": "Article 21 (Risk Management & Cryptographic Auditability)",
+  "eu_ai_act_alignment": "Article 9-15 (High-Risk Telemetry, Transparency & Human Oversight)",
+  "domains_8d": [
+    {
+      "code": "SYS",
+      "name": "Systems Intelligence",
+      "baseline_weight": 0.85,
+      "primary_invariant": "Modular determinism, DAG/CSR integrity, lock-free snapshot swap",
+      "compliance_mapping": ["ISO/IEC 25010", "IEEE 42010"]
+    },
+    {
+      "code": "ECON",
+      "name": "Macro & Token Economics",
+      "baseline_weight": 0.72,
+      "primary_invariant": "FinOps zero-cost OSS baseline, token compression ratio, bounded retries",
+      "compliance_mapping": ["FinOps Framework"]
+    },
+    {
+      "code": "PSYCH",
+      "name": "Cognitive & Behavioral",
+      "baseline_weight": 0.65,
+      "primary_invariant": "Dual UX separation (BEGINNER vs EXPERT), zero-fluff epistemic clarity",
+      "compliance_mapping": ["WCAG 2.1 AA", "ISO 9241-210"]
+    },
+    {
+      "code": "ECO",
+      "name": "Ecological & Energy",
+      "baseline_weight": 0.58,
+      "primary_invariant": "Eco-mode local deterministic synthesis, WAL size bounds (max_slot_wal_keep_size=2GB)",
+      "compliance_mapping": ["Green Software Foundation SCI"]
+    },
+    {
+      "code": "LAW",
+      "name": "Regulatory & Legal Compliance",
+      "baseline_weight": 0.90,
+      "primary_invariant": "GDPR PII redaction, EU AI Act provenance, Gate G4/G5 enforcement",
+      "compliance_mapping": ["GDPR Art.15/32", "EU AI Act", "NIS2", "ISO/IEC 42001:2023"]
+    },
+    {
+      "code": "SEC",
+      "name": "Zero-Trust Security",
+      "baseline_weight": 0.92,
+      "primary_invariant": "SQLCipher AES-256, Android Keystore, RLS, append-only ZK SHA-256 ledger",
+      "compliance_mapping": ["NIST SP 800-207", "OWASP MASVS L2", "ISO/IEC 27001"]
+    },
+    {
+      "code": "PHYS",
+      "name": "Physical Hardware & Edge Telemetry",
+      "baseline_weight": 0.80,
+      "primary_invariant": "HybridInferenceOrchestrator (>= 4 GB RAM gate, 1500 ms latency budget)",
+      "compliance_mapping": ["Android Compatibility Definition"]
+    },
+    {
+      "code": "SOC",
+      "name": "Societal Impact & Governance",
+      "baseline_weight": 0.70,
+      "primary_invariant": "Human-in-the-loop override auditability, anti-social-scoring gate",
+      "compliance_mapping": ["EU AI Act Art.5 Prohibited Practices"]
+    }
+  ],
+  "persistence_entities": {
+    "postgresql_17": {
+      "extensions": ["vector", "age", "pgcrypto"],
+      "graph_name": "omnis_causal_graph",
+      "tables": [
+        {
+          "name": "public.rag_memory_64d",
+          "index": "ix_rag_memory_64d_hnsw_cosine (HNSW vector_cosine_ops m=16 ef_construction=128)",
+          "rls_enabled": true
+        },
+        {
+          "name": "public.tensor_states_8d",
+          "replica_identity": "FULL",
+          "rls_enabled": true,
+          "electric_synced": true
+        },
+        {
+          "name": "public.messages",
+          "replica_identity": "FULL",
+          "rls_enabled": true,
+          "electric_synced": true
+        },
+        {
+          "name": "public.goals",
+          "replica_identity": "FULL",
+          "rls_enabled": true,
+          "electric_synced": true
+        },
+        {
+          "name": "public.rag_fragments",
+          "replica_identity": "FULL",
+          "rls_enabled": true,
+          "electric_synced": true
+        },
+        {
+          "name": "public.zk_audit_ledger",
+          "immutability": "trg_zk_audit_ledger_before_insert + trg_zk_audit_ledger_immutable + trg_zk_audit_ledger_no_truncate",
+          "concurrency_control": "pg_advisory_xact_lock"
+        },
+        {
+          "name": "public.causal_nodes",
+          "seeded_count": 8
+        },
+        {
+          "name": "public.causal_edges",
+          "seeded_count": 10
+        },
+        {
+          "name": "public.retraction_watch_blacklist",
+          "gate_binding": "Gate G5 Retraction & Integrity"
+        }
+      ],
+      "roles": ["omnis_app_rw", "omnis_audit_append", "omnis_sync_repl"]
+    },
+    "android_edge": {
+      "database": "omnis_encrypted_db",
+      "room_version": 18,
+      "encryption": "SQLCipher AES-256-CBC via Android Keystore",
+      "outbox_table": "omnis_sync_outbox"
+    }
+  }
+}

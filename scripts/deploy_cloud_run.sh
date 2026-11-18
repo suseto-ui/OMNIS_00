@@ -171,20 +171,11 @@ fi
 # 1b. Pre-flight Quality Gate & Security Rules Check
 # ------------------------------------------------------------------------------
 echo ""
-echo -e "${BLUE}=== [0/8] Lokální Pre-Flight Quality Gate & Firestore Rules Check ===${NC}"
-python3 -m py_compile backend/*.py backend/schemas/*.py backend/graph/*.py backend/gemini/*.py scripts/*.py
+echo -e "${BLUE}=== [0/8] Lokální Pre-Flight Quality Gate & DB Integrity Check ===${NC}"
+python3 -m py_compile $(find backend scripts -name "*.py")
 python3 scripts/verify_quality_gate.py
-echo -e "${GREEN}✓ Backend syntaxe a O.M.N.I.S. Quality Gate úspěšně ověřeny.${NC}"
-
-if [ -f "firestore.rules" ] && command -v firebase &>/dev/null && command -v node &>/dev/null; then
-  echo "Spouštím rychlé ověření firestore.rules přes emulátor..."
-  NODE_PATH="$(npm root -g 2>/dev/null || true)" \
-    firebase emulators:exec --only firestore,auth --project demo-no-project \
-    "FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 node --test firestore.test.js"
-  echo -e "${GREEN}✓ firestore.rules ověřeny proti všem unit testům.${NC}"
-else
-  echo -e "${YELLOW}ℹ Firebase CLI nebo Node není lokálně dostupné — ověření firestore.rules přeskočeno.${NC}"
-fi
+bash scripts/pre_deletion_gate.sh
+echo -e "${GREEN}✓ Backend syntaxe, O.M.N.I.S. Quality Gate a Integrity Gate úspěšně ověřeny.${NC}"
 
 # ------------------------------------------------------------------------------
 # 2. Nastavení projektu a povolení API
@@ -427,19 +418,36 @@ echo ""
 echo -e "${BLUE}=== [6/8] Spouštím Google Cloud Build (Multi-stage Docker + Python FastAPI) ===${NC}"
 
 BUILD_TAG="$(git rev-parse --short HEAD 2>/dev/null || date +%s)"
+IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/${SERVICE_NAME}:${BUILD_TAG}"
 echo "Build Tag: ${BUILD_TAG}"
-
-SUBSTITUTIONS="_REGION=${REGION},_TAG=${BUILD_TAG},_REPOSITORY=${REPOSITORY_NAME},_SERVICE_NAME=${SERVICE_NAME},_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},_FIRESTORE_DATABASE_ID=${FIRESTORE_DATABASE_ID}"
-if [ -n "$CLOUDSQL_INSTANCE" ]; then
-  SUBSTITUTIONS="${SUBSTITUTIONS},_CLOUDSQL_INSTANCE=${CLOUDSQL_INSTANCE}"
-fi
+echo "Target Image: ${IMAGE_URI}"
 
 gcloud builds submit \
-  --config cloudbuild.yaml \
-  --substitutions="$SUBSTITUTIONS" \
+  --tag "$IMAGE_URI" \
+  --project="$PROJECT_ID" \
+  .
+
+CLOUDSQL_FLAGS=()
+if [ -n "$CLOUDSQL_INSTANCE" ]; then
+  CLOUDSQL_FLAGS+=(--add-cloudsql-instances="$CLOUDSQL_INSTANCE")
+fi
+
+gcloud run deploy "$SERVICE_NAME" \
+  --image="$IMAGE_URI" \
+  --region="$REGION" \
+  --platform=managed \
+  --allow-unauthenticated \
+  --service-account="$RUN_SA" \
+  --min-instances=0 \
+  --max-instances=3 \
+  --memory=512Mi \
+  --cpu=1 \
+  --set-env-vars="ENV=production,USE_OSS_POSTGRES_SYNC=true,ENABLE_FIRESTORE_CQRS_PROJECTION=false,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIRESTORE_DATABASE_ID=${FIRESTORE_DATABASE_ID}" \
+  --set-secrets="SECRET_KEY=JWT_SECRET_KEY:latest,AUDIT_HMAC_KEY=AUDIT_HMAC_KEY:latest,OMNIS_SYNC_API_KEY=OMNIS_SYNC_API_KEY:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OMNIS_ADMIN_SECRET_HASHES=OMNIS_ADMIN_SECRET_HASHES:latest,DATABASE_URL=OMNIS_DATABASE_URL:latest" \
+  "${CLOUDSQL_FLAGS[@]}" \
   --project="$PROJECT_ID"
 
-echo -e "${GREEN}✓ Cloud Build a nasazení na Cloud Run proběhlo úspěšně!${NC}"
+echo -e "${GREEN}✓ Cloud Build (Dockerfile) a nasazení na Cloud Run proběhlo úspěšně!${NC}"
 
 # ------------------------------------------------------------------------------
 # 8. Získání URL a automatický smoke test

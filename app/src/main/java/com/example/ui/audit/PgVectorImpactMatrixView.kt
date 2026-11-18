@@ -74,7 +74,7 @@ fun PgVectorImpactMatrixView(
                         fontFamily = FontFamily.Monospace
                     )
                     Text(
-                        text = "HYBRID: FIRESTORE REALTIME + PGVECTOR HNSW INDEX",
+                        text = "HYBRID: ROOM SQLCIPHER + PG17 PGVECTOR HNSW + AGE",
                         color = OmnisTextMuted,
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace
@@ -126,12 +126,12 @@ fun PgVectorImpactMatrixView(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Firestore Client State:", color = OmnisTextMuted, fontSize = 10.sp)
-                                Text("Real-time relace & Auth", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Room v18 & ElectricSQL:", color = OmnisTextMuted, fontSize = 10.sp)
+                                Text("Šifrovaná Edge & Sync vrstva", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("PostgreSQL pgvector Engine:", color = OmnisTextMuted, fontSize = 10.sp)
-                                Text("64D HNSW Cosine Index", color = OmnisEmerald, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("PostgreSQL 17 Engine:", color = OmnisTextMuted, fontSize = 10.sp)
+                                Text("64D HNSW + Apache AGE", color = OmnisEmerald, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

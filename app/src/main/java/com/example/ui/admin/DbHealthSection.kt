@@ -72,7 +72,7 @@ fun AdminDbHealthCard(
                 ) {
                     Icon(Icons.Default.Storage, contentDescription = null, tint = OmnisEmerald, modifier = Modifier.size(18.dp))
                     Text(
-                        text = "HYBRIDNÍ DATABÁZE (ROOM + CLOUD SQL)",
+                        text = "HYBRIDNÍ DATABÁZE (ROOM v18 + PG17)",
                         color = OmnisEmerald,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -125,7 +125,7 @@ fun AdminDbHealthCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 DbMetricBox(label = "CELKEM (ROOM)", value = localCount.toString(), color = Color.White, modifier = Modifier.weight(1f))
-                DbMetricBox(label = "CLOUD SQL SYNCHRO", value = postgresSyncedCount.toString(), color = OmnisEmerald, modifier = Modifier.weight(1f))
+                DbMetricBox(label = "PG17 SYNCHRO", value = postgresSyncedCount.toString(), color = OmnisEmerald, modifier = Modifier.weight(1f))
                 DbMetricBox(label = "ČEKÁ NA SYNC", value = unSyncedCount.toString(), color = if (unSyncedCount > 0) OmnisAmber else OmnisTextMuted, modifier = Modifier.weight(1f))
             }
 
@@ -144,8 +144,8 @@ fun AdminDbHealthCard(
             ) {
                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Primární Cloud Sync:", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        Text("Cloud Firestore + Outbox CQRS", color = OmnisEmerald, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("Primární Sync Vrstva:", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text("Room Outbox -> PG17 / ElectricSQL", color = OmnisEmerald, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Čeká v Outbox frontě:", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
@@ -162,9 +162,9 @@ fun AdminDbHealthCard(
                         Text(formattedLastSync, color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Cloud SQL (volitelné):", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text("PostgreSQL 17 (Direct):", color = OmnisTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                         Text(
-                            text = if (DatabaseConfig.isCloudSqlConfigured) "${DatabaseConfig.host}:${DatabaseConfig.port}" else "Neaktivní (Cost-Lock)",
+                            text = if (DatabaseConfig.isCloudSqlConfigured) "${DatabaseConfig.host}:${DatabaseConfig.port}" else "REST Sync Gateway",
                             color = OmnisCyan,
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
@@ -258,7 +258,7 @@ fun AdminDbHealthCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Lokální Room SQLite slouží jako primární vrstva s nulovou latencí. Změny se asynchronně replikují do Cloud SQL přes zabezpečené TLS spojení.",
+                text = "Lokální Room v18 (SQLCipher AES-256) slouží jako šifrovaná primární vrstva s nulovou latencí. Změny se atomicky ukládají do Outboxu a replikují do PostgreSQL 17.",
                 color = OmnisTextMuted,
                 fontSize = 10.sp,
                 lineHeight = 13.sp

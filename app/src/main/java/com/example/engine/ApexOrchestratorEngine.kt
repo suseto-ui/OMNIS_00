@@ -65,7 +65,7 @@ KROK 4: Vygeneruj finální deterministický artefakt podle schématu: Analýza 
 <scratchpad>
 $generatedScratchpad
 </scratchpad>
-ROZHODNUTÍ O.M.N.I.S. APEX: Aplikovat hybridní architektonický model (Firestore real-time relace + PostgreSQL pgvector HNSW index). Tím se dosáhne nulové latence u klienta a absolutní sémantické přesnosti v 64D tenzorové paměti.
+ROZHODNUTÍ O.M.N.I.S. APEX: Aplikovat sjednocený architektonický model (Room v18 SQLCipher + ElectricSQL Sync + PostgreSQL 17 pgvector HNSW & Apache AGE). Tím se dosáhne nulové latence u klienta a absolutní sémantické přesnosti v 64D tenzorové paměti.
 """.trimIndent()
         }
 

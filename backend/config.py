@@ -45,7 +45,7 @@ class OmnisSettings(BaseSettings):
     OMNIS_SYNC_API_KEY: str = os.getenv("OMNIS_SYNC_API_KEY", "")
     ENABLE_CLOUD_KMS: bool = os.getenv("ENABLE_CLOUD_KMS", "false").lower() in ("1", "true", "yes")
     CLOUD_KMS_KEY_NAME: str = os.getenv("CLOUD_KMS_KEY_NAME", "")
-    ENABLE_FIRESTORE_CQRS_PROJECTION: bool = os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "true").lower() in (
+    ENABLE_FIRESTORE_CQRS_PROJECTION: bool = os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "false").lower() in (
         "1",
         "true",
         "yes",
@@ -107,7 +107,7 @@ def get_settings() -> OmnisSettings:
         OMNIS_SYNC_API_KEY=os.getenv("OMNIS_SYNC_API_KEY", ""),
         ENABLE_CLOUD_KMS=os.getenv("ENABLE_CLOUD_KMS", "false").lower() in ("1", "true", "yes"),
         CLOUD_KMS_KEY_NAME=os.getenv("CLOUD_KMS_KEY_NAME", ""),
-        ENABLE_FIRESTORE_CQRS_PROJECTION=os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "true").lower()
+        ENABLE_FIRESTORE_CQRS_PROJECTION=os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "false").lower()
         in ("1", "true", "yes"),
         USE_OSS_POSTGRES_SYNC=os.getenv("USE_OSS_POSTGRES_SYNC", "true").lower() in ("1", "true", "yes"),
         AUDIT_DATABASE_URL=os.getenv("AUDIT_DATABASE_URL", ""),

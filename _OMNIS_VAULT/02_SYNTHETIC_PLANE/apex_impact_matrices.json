@@ -1,0 +1,73 @@
+{
+  "matrix_version": "7.0",
+  "node_id": "NODE-SYN-001",
+  "plane": "Synthetic",
+  "subsystem": "SIGMA-OMEGA",
+  "source_engines": [
+    "app/src/main/java/com/example/engine/OmnisFivePhaseExecutor.kt",
+    "app/src/main/java/com/example/defense/SigmaOmegaRedTeamingEngine.kt",
+    "backend/graph/csr_engine.py",
+    "backend/schemas/akge.py"
+  ],
+  "five_phase_execution_pipeline": [
+    {
+      "phase": 1,
+      "id": "PHASE_I_HOLOMORPHIC_COLLECTION",
+      "name": "Holomorphic Data Collection",
+      "invariants": ["Multi-modal ingestion", "PII & injection sanitization"]
+    },
+    {
+      "phase": 2,
+      "id": "PHASE_II_SEMANTIC_DECONSTRUCTION",
+      "name": "Zero-Assumption Semantic Deconstruction",
+      "invariants": ["Noise elimination", "First-principles decomposition"]
+    },
+    {
+      "phase": 3,
+      "id": "PHASE_III_TRANSDISCIPLINARY_BRIDGE",
+      "name": "Transdisciplinary Bridging",
+      "invariants": ["8D domain cross-coupling", "CSR Apache AGE traversal"]
+    },
+    {
+      "phase": 4,
+      "id": "PHASE_IV_SYNERGIC_CONVERGENCE",
+      "name": "Synergistic Convergence & Impact Matrix",
+      "invariants": ["Win-Win-Win weighted optimization", "SIGMA adversarial stress"]
+    },
+    {
+      "phase": 5,
+      "id": "PHASE_V_AUTOPOIESIS",
+      "name": "Teleological Execution & Autopoiesis",
+      "invariants": ["ZK SHA-256 commitment seal", "Self-healing sensor loop"]
+    }
+  ],
+  "win_win_win_formula": {
+    "weights": {
+      "economic_viability": 0.25,
+      "technical_elegance": 0.30,
+      "eco_social_regeneration": 0.25,
+      "psychological_acceptance": 0.20
+    },
+    "normalization": "weighted_sum / 100.0 clamped to [0.0, 1.0]"
+  },
+  "tensor_topological_invariants": {
+    "dimension_count": 8,
+    "unique_pair_correlations": 28,
+    "percolation_critical_threshold": 0.38,
+    "shannon_entropy_upper_bound_nats": 2.08,
+    "q_omnis_target_minimum": 0.80,
+    "token_compression_tiers": {
+      "low_stress_sigma_lt_0_20": 0.70,
+      "moderate_stress_sigma_lt_0_60": 0.30,
+      "forensic_cascade_sigma_gte_0_60": 0.0
+    }
+  },
+  "refusal_ladder_gates": [
+    {"gate": "G1", "name": "Entry Point Resolution", "condition": "len(query.strip()) >= 3"},
+    {"gate": "G2", "name": "Concept Coupling", "condition": "word_count >= 2"},
+    {"gate": "G3", "name": "Causal Graph Path", "condition": "Do-Calculus P(Y|do(X)) > 0.50 & connected path in omnis_causal_graph"},
+    {"gate": "G4", "name": "Quotable Evidence & Safety", "condition": "Normative anchor (NIST 800-207 / ISO 42001 / NIS2) & blocked harmful vectors"},
+    {"gate": "G5", "name": "Retraction & Integrity", "condition": "Clean retraction_watch_blacklist & zero prompt injection"},
+    {"gate": "G6", "name": "Entailment & Entropy", "condition": "Shannon entropy S < 2.08 nats"}
+  ]
+}

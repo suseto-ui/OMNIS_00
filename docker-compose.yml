@@ -19,6 +19,8 @@ services:
       - "shared_preload_libraries=age"
       - "-c"
       - "max_connections=100"
+      - "-c"
+      - "max_slot_wal_keep_size=2GB"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-omnis_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -30,7 +32,7 @@ services:
       - "5432:5432"
     volumes:
       - pg17_data:/var/lib/postgresql/data
-      - ./backend/db/init-omnis-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
       - ./backend/db/02-apply-role-passwords.sh:/docker-entrypoint-initdb.d/02-apply-role-passwords.sh:ro
     deploy:
       resources:
@@ -59,6 +61,12 @@ services:
       - "3000:3000"
     volumes:
       - electric_data:/var/lib/electric/data
+    healthcheck:
+      test: ["CMD-SHELL", "(wget -qO- http://127.0.0.1:3000/v1/health || curl -sf http://127.0.0.1:3000/v1/health || nc -z 127.0.0.1 3000) >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -94,6 +102,12 @@ services:
       PORT: 8000
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "(curl -sf http://127.0.0.1:8000/healthz || python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)\") >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -107,6 +121,8 @@ services:
     depends_on:
       - backend
       - electric
+    environment:
+      DOMAIN_NAME: ${DOMAIN_NAME:-omnis.duckdns.org}
     ports:
       - "80:80"
       - "443:443"

@@ -8,7 +8,7 @@
       "subsystem": "Ontology",
       "vault_path": "_OMNIS_VAULT/01_EPISTEMIC_PLANE/entities_registry.json",
       "status": "ACTIVE",
-      "integrity_hash": "e3b0c442..."
+      "integrity_hash": "366dbeac579a32f54879795217123135ba696a0cda50be67c199a65f33ec6359"
     },
     {
       "node_id": "NODE-SYN-001",
@@ -16,7 +16,7 @@
       "subsystem": "SIGMA-OMEGA",
       "vault_path": "_OMNIS_VAULT/02_SYNTHETIC_PLANE/apex_impact_matrices.json",
       "status": "ACTIVE",
-      "integrity_hash": "8f4b2a11..."
+      "integrity_hash": "8685a9138bd10b55875d4386c529a1a9a28925936a03d684a319ab84cee13bba"
     },
     {
       "node_id": "NODE-PRX-001",
@@ -24,7 +24,7 @@
       "subsystem": "Code",
       "vault_path": "_OMNIS_VAULT/03_PRAXEOLOGICAL_PLANE/code_artifacts/OmnisOrchestrator.kt",
       "status": "REMEDIATED",
-      "integrity_hash": "7c9e1f33..."
+      "integrity_hash": "f2124eefbe8ef78209efea4de95ee24f68b06c630b0f5aa2db3118abb6a76c5b"
     },
     {
       "node_id": "ERR-001",
@@ -32,7 +32,7 @@
       "subsystem": "Defect",
       "vault_path": "_OMNIS_VAULT/04_AUDIT_AND_REMEDIATION/defect_registry.md",
       "status": "RESOLVED",
-      "integrity_hash": "1a2b3c4d..."
+      "integrity_hash": "cc604a9fd666523761ae6b461f5a67b68776065d8b75443f0681880458e639bf"
     },
     {
       "node_id": "FIX-001",
@@ -40,7 +40,7 @@
       "subsystem": "Blueprint",
       "vault_path": "_OMNIS_VAULT/04_AUDIT_AND_REMEDIATION/remediation_blueprints.md",
       "status": "DEFINITIVE_LOCKED",
-      "integrity_hash": "99ff88aa..."
+      "integrity_hash": "0b68329b37979826436081459541096f54bf06e129d8cf6795c184d636e61ff8"
     },
     {
       "node_id": "IMP-001",
@@ -48,15 +48,15 @@
       "subsystem": "Matrix",
       "vault_path": "_OMNIS_VAULT/04_AUDIT_AND_REMEDIATION/impact_verifications.md",
       "status": "VERIFIED",
-      "integrity_hash": "55aa44bb..."
+      "integrity_hash": "457d94d703ce05891fc6f5da7d3464378c9387d06730eca8d535afef39430311"
     },
     {
       "node_id": "STEP-001",
       "plane": "Roadmap",
       "subsystem": "Execution",
       "vault_path": "_OMNIS_VAULT/04_AUDIT_AND_REMEDIATION/execution_roadmap.md",
-      "status": "SCHEDULED",
-      "integrity_hash": "11223344..."
+      "status": "VERIFIED_READY",
+      "integrity_hash": "8c0b984bb0e51bb11555cf65c71c1d6b782ccb115d7b13f07e03fce7fdea1bec"
     }
   ],
   "edges": [

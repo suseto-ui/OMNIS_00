@@ -46,20 +46,12 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 
-# Dokumentace, Terraform a pomocné skripty (v kontejneru za běhu nepotřebné)
+# Dokumentace, Vault a pomocné skripty (v kontejneru za běhu nepotřebné)
 *.md
-*.tf
-*.hcl
-terraform.tfstate*
-.terraform/
+_OMNIS_VAULT/
 scripts/
-cloudbuild.yaml
 docker-compose.yml
 detekt.yml
 sonar-project.properties
 sonar-quality-gate.json
-firebase-blueprint.json
-firebase.json
-firestore.rules
-firestore.test.js
 public/

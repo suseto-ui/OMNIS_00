@@ -38,8 +38,9 @@ RUN addgroup --system --gid 10001 appuser && \
 # Přenést zkompilované virtuální prostředí z builderu
 COPY --from=builder /opt/venv /opt/venv
 
-# Přenést zdrojový kód backendu
+# Přenést zdrojový kód backendu a provozní skripty
 COPY backend/ ./backend/
+COPY scripts/ ./scripts/
 
 # Nastavení vlastnictví pro neprivilegovaného uživatele na aplikaci i virtuální prostředí
 RUN chown -R appuser:appuser /app /opt/venv && chmod -R a+rx /opt/venv

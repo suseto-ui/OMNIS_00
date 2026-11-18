@@ -170,7 +170,7 @@ if [ "${#MISSING_SECRETS[@]}" -gt 0 ]; then
   echo "Příklad: printf '%s' \"HODNOTA\" | gcloud secrets versions add GEMINI_API_KEY --data-file=-"
 fi
 echo "Následné spuštění buildu a nasazení na Cloud Run:"
-echo "  gcloud builds submit --config cloudbuild.yaml --substitutions=_REGION=${REGION},_TAG=\$(git rev-parse --short HEAD)"
+echo "  ./scripts/deploy_cloud_run.sh --project=${PROJECT_ID} --region=${REGION}"
 echo "Po nasazení získáte produkční URL příkazem:"
 echo "  gcloud run services describe omnis-backend --region=${REGION} --format='value(status.url)'"
 echo -e "${CYAN}================================================================${NC}"

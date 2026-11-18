@@ -82,7 +82,7 @@ class _NullSessionFactory:
 
 
 def is_mock_session(session: Any) -> bool:
-    """Vrací True, pokud SQLAlchemy běží bez připojené SQL databáze (Cloud Firestore primary režim)."""
+    """Vrací True, pokud SQLAlchemy běží bez připojené SQL databáze (lokální in-memory fallback)."""
     return isinstance(session, _MockSession)
 
 
@@ -90,7 +90,7 @@ engine = None
 async_session_factory = None
 
 if DATABASE_URL:
-    logger.info("Database URL detected. Preparing Google Cloud SQL connection pool...")
+    logger.info("Database URL detected. Preparing PostgreSQL 17 / SQL connection pool...")
     try:
         url = DATABASE_URL
         if url.startswith("postgresql://"):
@@ -101,7 +101,7 @@ if DATABASE_URL:
         engine_kwargs = {
             "echo": False,
             "pool_pre_ping": True,
-            "pool_recycle": 300,  # 5 min recycle for Cloud SQL TCP stability
+            "pool_recycle": 300,  # 5 min recycle for PostgreSQL TCP stability
         }
 
         if "sqlite" not in url:

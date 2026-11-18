@@ -52,11 +52,21 @@ jobs:
       - name: Run Robolectric & Unit Tests
         run: |
           chmod +x gradlew || true
-          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+          if [ -f "./gradlew" ]; then
+            ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+          else
+            gradle :app:testDebugUnitTest --no-daemon --stacktrace
+          fi
 
       - name: Build Release Bundle (AAB)
+        env:
+          OMNIS_BACKEND_URL: ${{ secrets.OMNIS_BACKEND_URL }}
         run: |
-          ./gradlew :app:bundleRelease --no-daemon --stacktrace
+          if [ -f "./gradlew" ]; then
+            ./gradlew :app:bundleRelease --no-daemon --stacktrace
+          else
+            gradle :app:bundleRelease --no-daemon --stacktrace
+          fi
 
   deploy-to-oci-ampere:
     name: Zero-Cost Deploy to OCI Always Free VM

@@ -23,8 +23,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         val omnisBackendUrl = (
-            project.findProperty("OMNIS_BACKEND_URL")?.toString()
-                ?: System.getenv("OMNIS_BACKEND_URL")
+            project.findProperty("OMNIS_BACKEND_URL")?.toString()?.takeIf { it.isNotBlank() }
+                ?: System.getenv("OMNIS_BACKEND_URL")?.takeIf { it.isNotBlank() }
                 ?: "https://ais-dev-43vgrwdupsfj4ht5yohxcz-291037164760.europe-west3.run.app"
             ).trimEnd('/')
         buildConfigField("String", "OMNIS_BACKEND_URL", "\"$omnisBackendUrl\"")
