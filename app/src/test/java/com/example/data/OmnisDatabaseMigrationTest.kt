@@ -129,4 +129,45 @@ class OmnisDatabaseMigrationTest {
         }
         roomDb.close()
     }
+
+    @Test
+    fun migrate18To19_createsLocalVector64DTable() {
+        helper.createDatabase("omnis_migration_18_19_db", 18).close()
+
+        helper.runMigrationsAndValidate(
+            "omnis_migration_18_19_db",
+            19,
+            true,
+            OmnisDatabase.MIGRATION_18_19
+        ).close()
+
+        val roomDb = Room.databaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            OmnisDatabase::class.java,
+            "omnis_migration_18_19_db"
+        ).addMigrations(*OmnisDatabase.ALL_MIGRATIONS)
+            .allowMainThreadQueries()
+            .build()
+
+        runBlocking {
+            val csv = List(64) { idx -> if (idx == 0) "1.0" else "0.0" }.joinToString(",")
+            val insertedId = roomDb.localVectorDao().upsertVector(
+                OmnisLocalVectorEntity(
+                    idempotencyKey = "vec_v19_test_1",
+                    userId = "susetofu",
+                    domain = "SYSTEMS_INTELLIGENCE",
+                    content = "Phase 2 encrypted local 64D vector parity record",
+                    vector64Csv = csv,
+                    normL2 = 1.0f,
+                    importanceScore = 1.5f
+                )
+            )
+            assertTrue(insertedId > 0L)
+            assertEquals(1, roomDb.localVectorDao().countVectors())
+            val rows = roomDb.localVectorDao().getTopVectorsByDomain("SYSTEMS_INTELLIGENCE", limit = 5)
+            assertEquals(1, rows.size)
+            assertEquals("vec_v19_test_1", rows.first().idempotencyKey)
+        }
+        roomDb.close()
+    }
 }

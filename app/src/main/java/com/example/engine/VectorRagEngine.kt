@@ -31,6 +31,32 @@ object VectorRagEngine {
     const val VECTOR_DIMENSION = 64
 
     /**
+     * Deterministická L2-normalizace 64D vektoru s ošetřením NaN/Inf a nulové normy.
+     */
+    fun normalizeL264D(rawVector: FloatArray): FloatArray {
+        val out = FloatArray(VECTOR_DIMENSION)
+        val limit = minOf(rawVector.size, VECTOR_DIMENSION)
+        var sumSquares = 0.0f
+        for (i in 0 until limit) {
+            val v = rawVector[i]
+            val finiteVal = if (v.isFinite()) v else 0.0f
+            out[i] = finiteVal
+            sumSquares += finiteVal * finiteVal
+        }
+        if (!sumSquares.isFinite() || sumSquares <= 1e-8f) {
+            return FloatArray(VECTOR_DIMENSION)
+        }
+        val norm = sqrt(sumSquares)
+        if (!norm.isFinite() || norm <= 0.0001f) {
+            return FloatArray(VECTOR_DIMENSION)
+        }
+        for (i in 0 until VECTOR_DIMENSION) {
+            out[i] /= norm
+        }
+        return out
+    }
+
+    /**
      * Kóduje textový řetězec do 64-dimenzionálního L2 normalizovaného hustého vektoru
      * využívajícího sémantické sub-word (n-gram) kódování.
      */
@@ -52,22 +78,11 @@ object VectorRagEngine {
         counts.forEach { (dimIndex, count) ->
             val tf = count.toFloat() / total
             val idf = 1.0f + ln(1.0f + (VECTOR_DIMENSION.toFloat() / (1.0f + count)))
-            vector[dimIndex] = tf * idf.toFloat()
+            val valFinite = tf * idf
+            vector[dimIndex] = if (valFinite.isFinite()) valFinite else 0.0f
         }
 
-        // L2 Normalizace vektoru
-        var sumSquares = 0.0f
-        for (v in vector) {
-            sumSquares += v * v
-        }
-        val norm = sqrt(sumSquares)
-        if (norm > 0.0001f) {
-            for (i in vector.indices) {
-                vector[i] /= norm
-            }
-        }
-
-        return vector
+        return normalizeL264D(vector)
     }
 
     /**
@@ -82,15 +97,17 @@ object VectorRagEngine {
         var normB = 0.0f
 
         for (i in 0 until VECTOR_DIMENSION) {
-            dotProduct += vectorA[i] * vectorB[i]
-            normA += vectorA[i] * vectorA[i]
-            normB += vectorB[i] * vectorB[i]
+            val a = if (vectorA[i].isFinite()) vectorA[i] else 0.0f
+            val b = if (vectorB[i].isFinite()) vectorB[i] else 0.0f
+            dotProduct += a * b
+            normA += a * a
+            normB += b * b
         }
 
         val denominator = sqrt(normA) * sqrt(normB)
-        if (denominator < 0.00001f) return 0.0f
-
-        return (dotProduct / denominator).coerceIn(0.0f, 1.0f)
+        if (!denominator.isFinite() || denominator < 0.00001f) return 0.0f
+        val cos = dotProduct / denominator
+        return if (cos.isFinite()) cos.coerceIn(0.0f, 1.0f) else 0.0f
     }
 
     /**

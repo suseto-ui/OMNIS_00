@@ -18,6 +18,7 @@ from backend.database import get_audit_db, get_db, hybrid_search_knowledge
 from backend.graph.csr_engine import (
     CsrKnowledgeGraph,
     DOMAINS_8D,
+    _sanitize_unit_float,
     compute_advanced_metrics,
     compute_q_omnis,
     get_age_graph_repository,
@@ -216,7 +217,10 @@ async def evaluate_akge_8d(
     a deterministickým Cryptographic Audit Commitment řetězcem (včetně Executive Override).
     """
     scores = {
-        d: float(req.domain_scores.get(d, 0.85 if d in ("SYS", "SEC", "LAW") else 0.78))
+        d: _sanitize_unit_float(
+            req.domain_scores.get(d, 0.85 if d in ("SYS", "SEC", "LAW") else 0.78),
+            default=0.78,
+        )
         for d in DOMAINS_8D
     }
     matrix_state = Matrix8DState(
@@ -309,8 +313,31 @@ async def evaluate_akge_8d(
         user_id=str(current_user.id),
     )
 
+    if not is_admin:
+        return {
+            "status": "APPROVED" if gates.all_passed else "REFUSED",
+            "access_tier": "STANDARD_USER",
+            "q_omnis": q_omnis,
+            "gate_evaluation": {
+                "all_passed": gates.all_passed,
+                "failed_gate": gates.failed_gate,
+                "refusal_reason": gates.refusal_reason,
+                "shannon_entropy": gates.shannon_entropy,
+            },
+            "audit_commitment": {
+                "commitment_hash": zk.commitment_hash,
+                "tier": zk.tier,
+                "algorithm": zk.algorithm,
+            },
+            "hybrid_rag_results": [
+                {"id": h.get("id"), "title": h.get("title"), "rrf_score": h.get("rrf_score")}
+                for h in rag_hits
+            ],
+        }
+
     return {
         "status": "OVERRIDE_ACTIVE" if override_active else ("APPROVED" if gates.all_passed else "REFUSED"),
+        "access_tier": "ADMIN_OPERATOR",
         "matrix_8d": matrix_state.model_dump(),
         "topological_invariants": topo,
         "percolation": {

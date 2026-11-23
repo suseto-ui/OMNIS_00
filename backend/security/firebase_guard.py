@@ -33,6 +33,11 @@ class AuthenticatedCaller:
     email: Optional[str]
     auth_method: str
     app_check_verified: bool
+    role: str = "STANDARD_USER"
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "ADMIN_OPERATOR"
 
 
 def _ensure_firebase_app() -> bool:
@@ -94,6 +99,7 @@ async def verify_firebase_and_appcheck(
             email=None,
             auth_method="api_key",
             app_check_verified=app_check_verified,
+            role="ADMIN_OPERATOR",
         )
 
     if authorization and authorization.startswith("Bearer "):
@@ -104,27 +110,39 @@ async def verify_firebase_and_appcheck(
                 email=None,
                 auth_method="bearer_api_key",
                 app_check_verified=app_check_verified,
+                role="ADMIN_OPERATOR",
             )
 
         # 1. Zkusit interní OMNIS JWT
         jwt_payload = decode_access_token(token)
         if jwt_payload and jwt_payload.get("sub"):
+            raw_role = str(jwt_payload.get("role") or "STANDARD_USER").strip().upper()
+            resolved_role = "ADMIN_OPERATOR" if raw_role == "ADMIN_OPERATOR" else "STANDARD_USER"
             return AuthenticatedCaller(
                 uid=str(jwt_payload["sub"]),
                 email=jwt_payload.get("email"),
                 auth_method="jwt",
                 app_check_verified=app_check_verified,
+                role=resolved_role,
             )
 
         # 2. Zkusit Firebase Auth ID Token
         if _ensure_firebase_app() and fb_auth is not None:
             try:
                 decoded = fb_auth.verify_id_token(token)
+                claim_role = str(decoded.get("role") or "").strip().upper()
+                email_val = (decoded.get("email") or "").strip().lower()
+                resolved_role = (
+                    "ADMIN_OPERATOR"
+                    if (claim_role == "ADMIN_OPERATOR" or email_val == "susetofu@gmail.com")
+                    else "STANDARD_USER"
+                )
                 return AuthenticatedCaller(
                     uid=str(decoded["uid"]),
                     email=decoded.get("email"),
                     auth_method="firebase_id_token",
                     app_check_verified=app_check_verified,
+                    role=resolved_role,
                 )
             except Exception as exc:
                 logger.warning("Firebase ID token verification failed: %s", exc)

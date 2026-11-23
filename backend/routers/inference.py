@@ -17,6 +17,7 @@ from backend.database import get_audit_db
 from backend.graph.csr_engine import (
     CsrKnowledgeGraph,
     DOMAINS_8D,
+    _sanitize_unit_float,
     compute_advanced_metrics,
     compute_q_omnis,
     get_age_graph_repository,
@@ -57,6 +58,30 @@ class InferenceAnalyzeResponse(BaseModel):
     audit_commitment: Dict[str, Any]
 
 
+def project_inference_for_role(
+    payload: Dict[str, Any],
+    role: str,
+) -> Dict[str, Any]:
+    """Izoluje citlivou interní forenzní telemetrii pro STANDARD_USER oproti ADMIN_OPERATOR."""
+    if str(role).upper() == "ADMIN_OPERATOR":
+        return payload
+
+    projected = dict(payload)
+    projected["topological_invariants"] = {
+        "shannon_entropy": payload.get("topological_invariants", {}).get("shannon_entropy", 0.0),
+        "access_tier": "STANDARD_USER",
+    }
+    projected["advanced_metrics"] = {
+        "selfHealingConfidence": payload.get("advanced_metrics", {}).get("selfHealingConfidence", 0.0),
+        "access_tier": "STANDARD_USER",
+    }
+    pon_raw = dict(payload.get("proof_of_necessity", {}))
+    pon_raw["trigger_vector"] = "REDACTED_STANDARD_USER"
+    pon_raw["exclusion_proof"] = "REDACTED_STANDARD_USER"
+    projected["proof_of_necessity"] = pon_raw
+    return projected
+
+
 @inference_router.post("/analyze", response_model=InferenceAnalyzeResponse)
 async def analyze_inference(
     req: InferenceAnalyzeRequest,
@@ -65,7 +90,10 @@ async def analyze_inference(
 ) -> InferenceAnalyzeResponse:
     sanitized = sanitize_prompt(req.query)
     scores = {
-        d: float(req.domain_scores.get(d, 0.86 if d in ("SYS", "SEC", "LAW") else 0.78))
+        d: _sanitize_unit_float(
+            req.domain_scores.get(d, 0.86 if d in ("SYS", "SEC", "LAW") else 0.78),
+            default=0.78,
+        )
         for d in DOMAINS_8D
     }
     matrix = Matrix8DState(
@@ -164,21 +192,22 @@ async def analyze_inference(
         except Exception:
             pass
 
-    return InferenceAnalyzeResponse(
-        status="APPROVED" if gates.all_passed else "REFUSED",
-        sanitized_query=clean_q,
-        pii_redacted_types=sanitized.pii_redacted_types,
-        detected_injections=sanitized.detected_injections,
-        matrix_8d=matrix.model_dump(),
-        topological_invariants=topo,
-        percolation={
+    response_dict = {
+        "status": "APPROVED" if gates.all_passed else "REFUSED",
+        "sanitized_query": clean_q,
+        "pii_redacted_types": sanitized.pii_redacted_types,
+        "detected_injections": sanitized.detected_injections,
+        "matrix_8d": matrix.model_dump(),
+        "topological_invariants": topo,
+        "percolation": {
             "critical_threshold": 0.38,
             "bypass_active": percolation_critical,
-            "diagnostic": percolation_msg,
+            "diagnostic": percolation_msg if caller.is_admin else ("ISOLATED" if percolation_critical else "STABLE"),
         },
-        advanced_metrics=adv_metrics,
-        q_omnis=q_omnis,
-        gate_evaluation=gates.model_dump(),
-        proof_of_necessity=pon.model_dump(),
-        audit_commitment=commitment.model_dump(),
-    )
+        "advanced_metrics": adv_metrics,
+        "q_omnis": q_omnis,
+        "gate_evaluation": gates.model_dump(),
+        "proof_of_necessity": pon.model_dump(),
+        "audit_commitment": commitment.model_dump(),
+    }
+    return InferenceAnalyzeResponse(**project_inference_for_role(response_dict, caller.role))

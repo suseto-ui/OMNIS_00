@@ -56,6 +56,13 @@ object TopologicalInferenceEngine {
     val DOMAIN_KEYS = listOf("SYS", "ECON", "PSYCH", "ECO", "LAW", "SEC", "PHYS", "SOC")
     const val CRITICAL_PERCOLATION_THRESHOLD = 0.38f
 
+    private fun sanitizeFinite(
+        value: Float,
+        default: Float = 0.5f,
+        minVal: Float = 0.0f,
+        maxVal: Float = 1.0f
+    ): Float = if (value.isFinite()) value.coerceIn(minVal, maxVal) else default
+
     /**
      * 1. Matematický kognitivní rámec: Topologické a informační metriky
      * χ = V - E + F
@@ -80,29 +87,34 @@ object TopologicalInferenceEngine {
         val betti0 = 1
         val betti1 = max(0, e - v + betti0)
 
-        // Shannonova informační entropie z rozložení stavů domén
-        val safeScores = DOMAIN_KEYS.map { (domainScores[it] ?: 0.5f).coerceIn(0.01f, 1.0f) }
-        val sumScores = safeScores.sum().coerceAtLeast(0.001f)
+        // Shannonova informační entropie z rozložení stavů domén (ošetření NaN/Inf)
+        val safeScores = DOMAIN_KEYS.map {
+            sanitizeFinite(domainScores[it] ?: 0.5f, default = 0.5f, minVal = 0.01f, maxVal = 1.0f)
+        }
+        val sumScores = safeScores.sum().let { if (it.isFinite()) it.coerceAtLeast(0.001f) else 1.0f }
         val probabilities = safeScores.map { it / sumScores }
 
         var entropy = 0.0f
         for (p in probabilities) {
-            if (p > 0.0001f) {
-                entropy += (p * ln(p.toDouble())).toFloat()
+            if (p.isFinite() && p > 0.0001f) {
+                val term = (p * ln(p.toDouble())).toFloat()
+                if (term.isFinite()) {
+                    entropy += term
+                }
             }
         }
-        val shannonEntropy = -entropy // S = -Σ pi ln(pi)
+        val shannonEntropy = (-entropy).let { if (it.isFinite() && it >= 0.0f) it else 2.08f }
 
         // Kritéria topologické integrity:
         // Eulerova charakteristika χ musí zůstat v konvergentním intervalu [-4, 6],
         // počet nezávislých analytických děr β1 nesmí být kriticky vysoký (> 7)
-        // a Shannonova entropie nesmí překročit teoretický rozpad (> 2.08f pro 8 domén)
-        val isTopologyValid = chi in -4..6 && betti1 in 0..7 && shannonEntropy < 2.08f
+        // a Shannonova entropie musí být konečná a < 2.08f pro 8 domén
+        val isTopologyValid = chi in -4..6 && betti1 in 0..7 && shannonEntropy.isFinite() && shannonEntropy < 2.08f
 
         val failureReason = when {
             chi !in -4..6 -> "Eulerova charakteristika χ = $chi je mimo stabilní interval [-4, 6] (topologická singularita prostoru)."
             betti1 > 7 -> "Bettiho číslo β1 = $betti1 překročilo práh analytických děr (rozpad kauzální souvislosti)."
-            shannonEntropy >= 2.08f -> "Kritická Shannonova entropie (S = ${String.format("%.3f", shannonEntropy)} >= 2.08) detekovala informační bifurkaci a ztrátu koherence."
+            !shannonEntropy.isFinite() || shannonEntropy >= 2.08f -> "Kritická Shannonova entropie (S = ${String.format("%.3f", shannonEntropy)} >= 2.08) detekovala informační bifurkaci a ztrátu koherence."
             else -> null
         }
 
@@ -150,7 +162,7 @@ object TopologicalInferenceEngine {
      * Dynamická adaptace hloubky syntézy na základě systémového pnutí (σ).
      */
     fun calculateTokenBudget(systemStressSigma: Float): TokenFlowBudget {
-        val sigma = systemStressSigma.coerceIn(0.0f, 1.0f)
+        val sigma = sanitizeFinite(systemStressSigma, default = 0.5f)
         return when {
             sigma < 0.2f -> TokenFlowBudget(
                 systemStressSigma = sigma,

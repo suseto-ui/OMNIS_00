@@ -36,6 +36,42 @@ except ImportError:
 
 # 8D Kognitivní dimenze O.M.N.I.S.
 DOMAINS_8D = ["SYS", "ECON", "PSYCH", "ECO", "LAW", "SEC", "PHYS", "SOC"]
+VECTOR_DIMENSION_64D = 64
+
+
+def _sanitize_unit_float(
+    value: Any,
+    default: float = 0.5,
+    low: float = 0.0,
+    high: float = 1.0,
+) -> float:
+    """Převede libovolnou hodnotu na konečný float v [low, high] a eliminuje NaN/Inf."""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(numeric):
+        return default
+    return min(high, max(low, numeric))
+
+
+def normalize_l2_64d(vector: List[float]) -> List[float]:
+    """
+    Sanitizuje 64D vektor proti NaN/Inf a provede deterministickou L2-normalizaci.
+    Pokud je vstup kratší/delší než 64, bezpečně jej doplní nulami nebo ořízne na 64 prvků.
+    """
+    cleaned = [
+        _sanitize_unit_float(v, default=0.0, low=-1e6, high=1e6)
+        for v in (vector or [])[:VECTOR_DIMENSION_64D]
+    ]
+    if len(cleaned) < VECTOR_DIMENSION_64D:
+        cleaned.extend([0.0] * (VECTOR_DIMENSION_64D - len(cleaned)))
+
+    norm_sq = sum(v * v for v in cleaned)
+    if not math.isfinite(norm_sq) or norm_sq <= 1e-12:
+        return [0.0] * VECTOR_DIMENSION_64D
+    norm = math.sqrt(norm_sq)
+    return [round(v / norm, 8) for v in cleaned]
 
 
 class ProofOfNecessityLog(BaseModel):
@@ -156,7 +192,7 @@ class CsrKnowledgeGraph:
             row_end = int(self.indptr[current + 1])
             for k in range(row_start, row_end):
                 neighbor = int(self.indices[k])
-                w = min(1.0, max(0.01, float(self.data[k])))
+                w = _sanitize_unit_float(self.data[k], default=0.5, low=0.01, high=1.0)
                 resistance = 1.0 / w
                 new_dist = current_dist + resistance
                 if new_dist < distances[neighbor]:
@@ -210,12 +246,21 @@ class CsrKnowledgeGraph:
         )
 
     def calculate_entropy(self, probabilities: List[float]) -> float:
-        """Výpočet systémové Shannonovy entropie S = -sum(p_i * ln(p_i))."""
+        """Výpočet systémové Shannonovy entropie S = -sum(p_i * ln(p_i)) s ošetřením NaN/Inf."""
+        if not probabilities:
+            return 0.0
+        clean = [_sanitize_unit_float(p, default=0.0, low=0.0, high=1e9) for p in probabilities]
+        total = sum(clean)
+        if not math.isfinite(total) or total <= 1e-12:
+            return 0.0
         entropy = 0.0
-        for p in probabilities:
+        for raw_p in clean:
+            p = raw_p / total
             if p > 1e-12:
                 entropy -= p * math.log(p)
-        return float(round(entropy, 4))
+        if not math.isfinite(entropy):
+            return 0.0
+        return float(round(max(0.0, entropy), 4))
 
     def compute_do_calculus_intervention(
         self,
@@ -229,18 +274,18 @@ class CsrKnowledgeGraph:
         1:1 parita s Kotlin CsrKnowledgeGraph.computeDoCalculusIntervention.
         """
         if intervention_domain not in self.node_mapping or target_domain not in self.node_mapping:
-            return float(current_values.get(target_domain, 0.5))
+            return _sanitize_unit_float(current_values.get(target_domain, 0.5), default=0.5)
 
-        x_val = min(1.0, max(0.0, float(intervention_value)))
+        x_val = _sanitize_unit_float(intervention_value, default=0.5)
         if intervention_domain == target_domain:
             return x_val
 
-        original_x = min(1.0, max(0.0, float(current_values.get(intervention_domain, 0.5))))
+        original_x = _sanitize_unit_float(current_values.get(intervention_domain, 0.5), default=0.5)
         delta_x = x_val - original_x
 
         causal_path = self.find_shortest_causal_path(intervention_domain, target_domain)
         if not causal_path:
-            return float(current_values.get(target_domain, 0.5))
+            return _sanitize_unit_float(current_values.get(target_domain, 0.5), default=0.5)
 
         cumulative_transfer = 1.0
         for i in range(len(causal_path) - 1):
@@ -251,13 +296,13 @@ class CsrKnowledgeGraph:
             end = int(self.indptr[u_idx + 1])
             for k in range(start, end):
                 if int(self.indices[k]) == v_idx:
-                    edge_weight = float(self.data[k])
+                    edge_weight = _sanitize_unit_float(self.data[k], default=0.5)
                     break
             cumulative_transfer *= edge_weight
 
-        original_y = min(1.0, max(0.0, float(current_values.get(target_domain, 0.5))))
+        original_y = _sanitize_unit_float(current_values.get(target_domain, 0.5), default=0.5)
         induced_delta_y = delta_x * cumulative_transfer
-        final_y = min(1.0, max(0.05, original_y + induced_delta_y))
+        final_y = _sanitize_unit_float(original_y + induced_delta_y, default=0.5, low=0.05, high=1.0)
         return int(final_y * 1000.0) / 1000.0
 
     def evaluate_percolation_bypass(
@@ -270,9 +315,12 @@ class CsrKnowledgeGraph:
         Při překročení prahu zasažených domén (score < 0.40) aktivuje stabilizační izolaci.
         """
         domains = list(self.node_mapping.keys()) or DOMAINS_8D
-        failing_count = sum(1 for d in domains if float(domain_scores.get(d, 0.5)) < 0.40)
+        threshold = _sanitize_unit_float(critical_threshold, default=0.38)
+        failing_count = sum(
+            1 for d in domains if _sanitize_unit_float(domain_scores.get(d, 0.5), default=0.5) < 0.40
+        )
         failing_ratio = failing_count / max(1, len(domains))
-        is_critical = failing_ratio >= critical_threshold
+        is_critical = failing_ratio >= threshold
 
         if is_critical:
             msg = f"PERCOLATION_CRITICAL: Zasaženo {int(failing_ratio * 100)}% domén (práh 38%). Aktivována stabilizační izolace."
@@ -291,7 +339,7 @@ class CsrKnowledgeGraph:
         chi = vertices - edges + faces
         beta_0 = 1
         beta_1 = max(0, edges - vertices + beta_0 - faces)
-        vals = [max(0.01, float(domain_scores.get(d, 0.5))) for d in DOMAINS_8D]
+        vals = [_sanitize_unit_float(domain_scores.get(d, 0.5), default=0.5, low=0.01, high=1.0) for d in DOMAINS_8D]
         total = sum(vals) or 1.0
         probs = [v / total for v in vals]
         entropy = self.calculate_entropy(probs)
@@ -355,7 +403,9 @@ class CsrKnowledgeGraph:
             edges_count = 0
             for j, tgt in enumerate(DOMAINS_8D):
                 if i != j:
-                    w = float(round((weights.get(src, 0.8) + weights.get(tgt, 0.8)) / 2.0, 3))
+                    w_src = _sanitize_unit_float(weights.get(src, 0.8), default=0.8)
+                    w_tgt = _sanitize_unit_float(weights.get(tgt, 0.8), default=0.8)
+                    w = float(round((w_src + w_tgt) / 2.0, 3))
                     column_indices.append(j)
                     data.append(w)
                     edges_count += 1
@@ -386,17 +436,18 @@ def compute_advanced_metrics(
     sum_covariance = 0.0
     for i in range(n):
         for j in range(i + 1, n):
-            v1 = float(weights.get(DOMAINS_8D[i], 0.5))
-            v2 = float(weights.get(DOMAINS_8D[j], 0.5))
+            v1 = _sanitize_unit_float(weights.get(DOMAINS_8D[i], 0.5), default=0.5)
+            v2 = _sanitize_unit_float(weights.get(DOMAINS_8D[j], 0.5), default=0.5)
             sum_covariance += 1.0 - abs(v1 - v2)
             pair_count += 1
 
-    qei = min(1.0, max(0.0, sum_covariance / pair_count)) if pair_count > 0 else 0.85
+    qei = _sanitize_unit_float(sum_covariance / pair_count, default=0.85) if pair_count > 0 else 0.85
     drift = max(0, int(real_execution_latency_ms) - 12)
-    normalized_entropy = min(1.0, max(0.0, float(entropy) / 2.08))
-    self_healing = min(1.0, max(0.0, 1.0 - normalized_entropy * 0.70))
-    norm_drift = min(1.0, max(0.0, drift / 100.0))
-    anomaly = min(1.0, max(0.0, normalized_entropy * (1.0 - qei * 0.5) * (0.3 + 0.7 * norm_drift)))
+    safe_entropy = _sanitize_unit_float(entropy, default=0.5, low=0.0, high=2.08)
+    normalized_entropy = _sanitize_unit_float(safe_entropy / 2.08, default=0.25)
+    self_healing = _sanitize_unit_float(1.0 - normalized_entropy * 0.70, default=0.82)
+    norm_drift = _sanitize_unit_float(drift / 100.0, default=0.0)
+    anomaly = _sanitize_unit_float(normalized_entropy * (1.0 - qei * 0.5) * (0.3 + 0.7 * norm_drift), default=0.0)
 
     return {
         "quantumEntanglementIndex": int(qei * 100.0) / 100.0,
@@ -419,11 +470,12 @@ def generate_proof_of_necessity(
     Vygeneruje kryptograficky ověřitelný Proof of Necessity (PoN) s řetězeným auditním závazkem
     (Cryptographic Audit Commitment — HMAC-SHA256 / SHA-256 Hash Chain).
     """
+    r_safe = _sanitize_unit_float(r_systemic, default=0.5)
     query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()
     if prev_commitment_hash != "GENESIS":
-        raw_commitment = f"OMNIS-AUDIT-CHAIN||{prev_commitment_hash}||{query_hash}||{r_systemic:.4f}||{tier}||{nonce}"
+        raw_commitment = f"OMNIS-AUDIT-CHAIN||{prev_commitment_hash}||{query_hash}||{r_safe:.4f}||{tier}||{nonce}"
     else:
-        raw_commitment = f"OMNIS-ZK-PROOF||{query_hash}||{r_systemic:.4f}||{tier}||{nonce}"
+        raw_commitment = f"OMNIS-ZK-PROOF||{query_hash}||{r_safe:.4f}||{tier}||{nonce}"
     if override_active:
         raw_commitment += "||OVERRIDE_ACTIVE"
     commitment_hash = hashlib.sha256(raw_commitment.encode("utf-8")).hexdigest()

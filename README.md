@@ -11,10 +11,10 @@ graph TD
     UI[Jetpack Compose M3 UI] -->|UDF StateFlow| VM[OmnisViewModel / StateFlow]
     VM -->|1. Interceptor & Sanitizace| APEX[APEX Master Orchestrator & Scratchpad]
     APEX -->|2. Tenzorový Výpočet 8D| AKGE[AKGE-8D Tensor Kernel]
-    APEX -->|3. 64D RAG Vyhledávání| RAG[64D Vector RAG Memory & Room v18 SQLCipher]
+    APEX -->|3. 64D RAG Vyhledávání| RAG[64D Vector RAG Memory & Room v19 SQLCipher]
     APEX -->|4. HMAC-SHA256 & Inference| API[Firebase AI Logic / Multi-LLM Cascade]
     API -->|5. Zero-Fluff Sanitizace| VAL[Unified Response Evaluator Q_omnis]
-    VAL -->|6. Sjednocená Perzistence| DB[Room v18 SQLCipher + Outbox -> ElectricSQL / PostgreSQL 17]
+    VAL -->|6. Sjednocená Perzistence| DB[Room v19 SQLCipher + Outbox -> ElectricSQL / PostgreSQL 17]
 
     subgraph Kognitivní Bezpečnostní Perimetr
         APEX
@@ -160,12 +160,12 @@ stateDiagram-v2
 
 ---
 
-## 🚀 6. Příkazy pro Sestavení a Verifikaci (CI/CD: `omnis-ci.yml`)
+## 🚀 6. Příkazy pro Sestavení a Verifikaci (CI/CD: `production-ci-cd.yml`)
 
 ```bash
 # 1. Kontrola syntaxe a Integrity Gate (init.sql, docker-compose.yml, _OMNIS_VAULT SHA-256, unittest)
 python3 -m py_compile $(find backend scripts -name "*.py")
-./scripts/pre_deletion_gate.sh
+./scripts/verify_and_clean_legacy.sh --verify-only
 
 # 2. Plný backend Quality Gate (v prostředí s nainstalovanými závislostmi z backend/requirements.txt)
 PYTHONPATH=. pytest backend/ --cov=backend --cov-branch --cov-report=xml:coverage.xml --cov-fail-under=80
@@ -176,10 +176,18 @@ python3 scripts/verify_quality_gate.py --coverage-xml coverage.xml
 docker compose up -d --build
 ./scripts/verify_cutover.sh
 
-# 4. Android Unit & Robolectric testy + produkční Release AAB (s vlastní doménou mimo GCP)
-gradle :app:testDebugUnitTest --no-daemon
-gradle :app:bundleRelease -POMNIS_BACKEND_URL=https://tvoje-domena.duckdns.org --no-daemon
+# 4. Android Unit & Robolectric testy + produkční Release APK/AAB + SHA-256 součty
+./scripts/release_v4_5_0.sh
 ```
+
+---
+
+## 📦 7. Poznámky k Vydání `v4.5.0-GA`
+
+- **CI/CD & Statické brány:** Sjednocený workflow `.github/workflows/production-ci-cd.yml` (Detekt, `pytest` s pokrytím ≥ 80 %, `ruff`, `bandit`, `radon`, Android `:app:testDebugUnitTest` a podepsané R8 release artefakty).
+- **Sjednocená Perzistence:** PostgreSQL 17 (`pgvector`, `Apache AGE`, `pgcrypto`), `ElectricSQL 1.8.1`, Android Room **v19** + SQLCipher AES-256 s lokálním 64D vektorovým úložištěm (`omnis_local_vectors_64d`, `MIGRATION_18_19`).
+- **Kognitivní Jádro & Zero-Trust:** Sjednocená brána LLM inference (`tools/gemma4/agent.yaml` + `ProviderCircuitBreaker` CLOSED/OPEN/HALF_OPEN), ošetření `NaN`/`Inf` v AKGE-8D a 64D L2-normalizaci, entropická brána G6 ($S < 2.08$), konstantně-časová verifikace `zk_audit_ledger` a striktní RBAC izolace `STANDARD_USER` vs. `ADMIN_OPERATOR`.
+- **Android Production Release:** `versionCode = 450`, `versionName = 4.5.0`, R8 minifikace a shrink resources (`proguard-rules.pro`) a environmentální podpis (`OMNIS_KEYSTORE_FILE`).
 
 ---
 

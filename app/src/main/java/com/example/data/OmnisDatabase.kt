@@ -17,9 +17,10 @@ import com.example.BuildConfig
         OmnisTelemetry::class,
         UserEntity::class,
         UserActivityLogEntity::class,
-        OmnisSyncOutboxEntity::class
+        OmnisSyncOutboxEntity::class,
+        OmnisLocalVectorEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = true
 )
 abstract class OmnisDatabase : RoomDatabase() {
@@ -27,6 +28,7 @@ abstract class OmnisDatabase : RoomDatabase() {
     abstract fun userAuthDao(): UserAuthDao
     abstract fun userActivityLogDao(): UserActivityLogDao
     abstract fun outboxDao(): OmnisOutboxDao
+    abstract fun localVectorDao(): OmnisLocalVectorDao
 
     companion object {
         const val DATABASE_NAME = "omnis_local_db"
@@ -162,13 +164,43 @@ abstract class OmnisDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `omnis_local_vectors_64d` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `idempotencyKey` TEXT NOT NULL,
+                        `userId` TEXT NOT NULL,
+                        `threadId` TEXT NOT NULL,
+                        `domain` TEXT NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `vector64Csv` TEXT NOT NULL,
+                        `normL2` REAL NOT NULL,
+                        `importanceScore` REAL NOT NULL,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_omnis_local_vectors_64d_idempotencyKey` " +
+                        "ON `omnis_local_vectors_64d` (`idempotencyKey`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_omnis_local_vectors_64d_domain_createdAt` " +
+                        "ON `omnis_local_vectors_64d` (`domain`, `createdAt`)"
+                )
+            }
+        }
+
         val ALL_MIGRATIONS: Array<Migration> = arrayOf(
             MIGRATION_12_13,
             MIGRATION_13_14,
             MIGRATION_14_15,
             MIGRATION_15_16,
             MIGRATION_16_17,
-            MIGRATION_17_18
+            MIGRATION_17_18,
+            MIGRATION_18_19
         )
 
         private fun hasColumn(db: SupportSQLiteDatabase, table: String, column: String): Boolean {

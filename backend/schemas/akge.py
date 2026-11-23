@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import os
 import uuid
 from datetime import datetime, timezone
@@ -73,6 +74,21 @@ class Matrix8DState(BaseModel):
     correlation_tensor_28: Dict[str, float] = Field(default_factory=dict, description="28-párový tenzor r_ij in [-1, 1]")
     harmonic_mean_hw: float = Field(default=0.5, ge=0.0, le=1.0, description="Vážený harmonický průměr H_w")
     timestamp: int = Field(default_factory=lambda: int(datetime.now(timezone.utc).timestamp() * 1000))
+
+    @model_validator(mode="before")
+    @classmethod
+    def sanitize_non_finite_domains(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        cleaned = dict(data)
+        for key in ("sys", "econ", "psych", "eco", "law", "sec", "phys", "soc"):
+            if key in cleaned and cleaned[key] is not None:
+                try:
+                    numeric = float(cleaned[key])
+                    cleaned[key] = min(1.0, max(0.0, numeric)) if math.isfinite(numeric) else 0.5
+                except (TypeError, ValueError):
+                    cleaned[key] = 0.5
+        return cleaned
 
     @model_validator(mode="after")
     def compute_hw_and_tensor(self) -> Matrix8DState:
@@ -153,13 +169,20 @@ class GateEvaluationResult(BaseModel):
 
     @model_validator(mode="after")
     def evaluate_gates(self) -> GateEvaluationResult:
+        entropy_val = float(self.shannon_entropy) if isinstance(self.shannon_entropy, (int, float)) else 2.08
+        entropy_finite = math.isfinite(entropy_val) and 0.0 <= entropy_val < 2.08
+        safe_entropy = round(max(0.0, entropy_val), 4) if math.isfinite(entropy_val) else 2.08
+        g6_effective = bool(self.g6_entailment_entropy and entropy_finite)
+        object.__setattr__(self, "shannon_entropy", safe_entropy)
+        object.__setattr__(self, "g6_entailment_entropy", g6_effective)
+
         gates = [
             ("G1", self.g1_entry_point, "Mapování uzlů selhalo - vstup neodpovídá 8D ontologii"),
             ("G2", self.g2_concept_coupling, "Nedostatečné provázání konceptů - chybí min. 2 sémantické relace"),
             ("G3", self.g3_causal_path, "Chybí spojitá kauzální cesta v CsrKnowledgeGraph"),
             ("G4", self.g4_quotable_evidence, "Regulatorní neshoda s EU AI Act nebo NIS2 směrnicí"),
             ("G5", self.g5_retraction_integrity, "Detekovány falzifikované nebo zastaralé premisy"),
-            ("G6", self.g6_entailment_entropy, "Vysoká entropie / logický rozpad dedukce"),
+            ("G6", g6_effective, "Vysoká nebo nekonečná entropie / logický rozpad dedukce"),
         ]
 
         all_ok = True
@@ -285,15 +308,41 @@ class CryptographicAuditCommitment(BaseModel):
         q_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()
         n = nonce or uuid.uuid4().hex[:16]
         resolved_key = hmac_key if hmac_key is not None else os.getenv("AUDIT_HMAC_KEY")
+        safe_r = min(1.0, max(0.0, float(r_systemic))) if math.isfinite(float(r_systemic)) else 0.5
         return cls(
             query_hash=q_hash,
-            r_systemic=r_systemic,
+            r_systemic=safe_r,
             tier=tier,
             nonce=n,
             override_active=override_active,
             prev_commitment_hash=prev_commitment_hash,
             hmac_key=resolved_key or None,
         )
+
+    @classmethod
+    def verify_commitment(
+        cls,
+        *,
+        query: str,
+        r_systemic: float,
+        tier: str,
+        nonce: str,
+        expected_hash: str,
+        override_active: bool = False,
+        prev_commitment_hash: str = "GENESIS",
+        hmac_key: Optional[str] = None,
+    ) -> bool:
+        """Deterministické konstantně-časové ověření závazku ZK Audit Ledgeru."""
+        recomputed = cls.generate(
+            query=query,
+            r_systemic=r_systemic,
+            tier=tier,
+            nonce=nonce,
+            override_active=override_active,
+            prev_commitment_hash=prev_commitment_hash,
+            hmac_key=hmac_key,
+        )
+        return hmac.compare_digest(recomputed.commitment_hash, str(expected_hash or "").strip())
 
 
 # Zpětná kompatibilita názvu pro stávající volající moduly

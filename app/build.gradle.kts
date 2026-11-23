@@ -17,8 +17,8 @@ android {
         applicationId = "com.aistudio.omnis.app.bnndfx"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 450
+        versionName = "4.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -30,10 +30,34 @@ android {
         buildConfigField("String", "OMNIS_BACKEND_URL", "\"$omnisBackendUrl\"")
     }
 
+    val releaseKeystorePath = System.getenv("OMNIS_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+    val releaseKeystorePassword = System.getenv("OMNIS_KEYSTORE_PASSWORD") ?: ""
+    val releaseKeyAlias = System.getenv("OMNIS_KEY_ALIAS") ?: ""
+    val releaseKeyPassword = System.getenv("OMNIS_KEY_PASSWORD") ?: ""
+    val hasReleaseSigning = releaseKeystorePath != null &&
+        file(releaseKeystorePath).exists() &&
+        releaseKeystorePassword.isNotEmpty() &&
+        releaseKeyAlias.isNotEmpty() &&
+        releaseKeyPassword.isNotEmpty()
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -126,6 +126,16 @@ object AkgeTensorKernel {
     private val _cognitiveAnomalyAlert = MutableStateFlow(false)
     val cognitiveAnomalyAlert: StateFlow<Boolean> = _cognitiveAnomalyAlert.asStateFlow()
 
+    fun sanitizeUnitFloat(
+        value: Float,
+        default: Float = 0.5f,
+        minVal: Float = 0.0f,
+        maxVal: Float = 1.0f
+    ): Float {
+        if (!value.isFinite()) return default
+        return value.coerceIn(minVal, maxVal)
+    }
+
     fun computeAdvancedMetrics(
         weights: Map<String, Float>,
         entropy: Float,
@@ -136,19 +146,20 @@ object AkgeTensorKernel {
         var sumCovariance = 0.0f
         for (i in 0 until n) {
             for (j in i + 1 until n) {
-                val v1 = weights[DOMAIN_KEYS[i]] ?: 0.5f
-                val v2 = weights[DOMAIN_KEYS[j]] ?: 0.5f
+                val v1 = sanitizeUnitFloat(weights[DOMAIN_KEYS[i]] ?: 0.5f)
+                val v2 = sanitizeUnitFloat(weights[DOMAIN_KEYS[j]] ?: 0.5f)
                 val pairEntanglement = 1.0f - abs(v1 - v2)
                 sumCovariance += pairEntanglement
                 pairCount++
             }
         }
-        val qei = if (pairCount > 0) (sumCovariance / pairCount).coerceIn(0.0f, 1.0f) else 0.85f
+        val qei = if (pairCount > 0) sanitizeUnitFloat(sumCovariance / pairCount, default = 0.85f) else 0.85f
         val drift = max(0L, realExecutionLatencyMs - 12L)
-        val normalizedEntropy = (entropy / 2.08f).coerceIn(0.0f, 1.0f)
-        val selfHealing = (1.0f - normalizedEntropy * 0.70f).coerceIn(0.0f, 1.0f)
-        val normDrift = (drift.toFloat() / 100.0f).coerceIn(0.0f, 1.0f)
-        val anomaly = (normalizedEntropy * (1.0f - qei * 0.5f) * (0.3f + 0.7f * normDrift)).coerceIn(0.0f, 1.0f)
+        val safeEntropy = sanitizeUnitFloat(entropy, default = 0.5f, minVal = 0.0f, maxVal = 2.08f)
+        val normalizedEntropy = sanitizeUnitFloat(safeEntropy / 2.08f, default = 0.25f)
+        val selfHealing = sanitizeUnitFloat(1.0f - normalizedEntropy * 0.70f, default = 0.82f)
+        val normDrift = sanitizeUnitFloat(drift.toFloat() / 100.0f, default = 0.0f)
+        val anomaly = sanitizeUnitFloat(normalizedEntropy * (1.0f - qei * 0.5f) * (0.3f + 0.7f * normDrift), default = 0.0f)
 
         return AdvancedMetrics(
             quantumEntanglementIndex = (qei * 100f).toInt() / 100f,
@@ -246,8 +257,9 @@ object AkgeTensorKernel {
         alpha: Float = 0.70f
     ): Map<String, Float> {
         val n = DOMAIN_KEYS.size
+        val safeAlpha = sanitizeUnitFloat(alpha, default = 0.70f)
         val vector = FloatArray(n) { idx ->
-            currentWeights[DOMAIN_KEYS[idx]] ?: 0.5f
+            sanitizeUnitFloat(currentWeights[DOMAIN_KEYS[idx]] ?: 0.5f)
         }
 
         // Násobení CSR maticí
@@ -262,11 +274,11 @@ object AkgeTensorKernel {
             val end = csr.rowPointers[i + 1]
             var weightSum = 0.0f
             for (k in start until end) {
-                weightSum += csr.values[k]
+                weightSum += sanitizeUnitFloat(csr.values[k], default = 0.0f)
             }
             val normFactor = if (weightSum > 0.001f) weightSum else 1.0f
-            val diffVal = (diffused[i] / normFactor).coerceIn(0.0f, 1.0f)
-            val finalVal = (alpha * prevVal + (1.0f - alpha) * diffVal).coerceIn(0.05f, 1.0f)
+            val diffVal = sanitizeUnitFloat(diffused[i] / normFactor)
+            val finalVal = sanitizeUnitFloat(safeAlpha * prevVal + (1.0f - safeAlpha) * diffVal, default = 0.5f, minVal = 0.05f, maxVal = 1.0f)
             updated[domain] = (finalVal * 100f).toInt() / 100f
         }
         return updated
@@ -295,14 +307,18 @@ object AkgeTensorKernel {
         var sumW = 0.0
         var sumWOverV = 0.0
         for (domain in DOMAIN_KEYS) {
-            val w = weights[domain] ?: 0.125f
-            val v = (domainValues[domain] ?: domainValues[domain.lowercase()] ?: 0.5f).coerceAtLeast(0.001f)
+            val w = sanitizeUnitFloat(weights[domain] ?: 0.125f, default = 0.125f, minVal = 0.001f, maxVal = 1.0f)
+            val rawV = domainValues[domain] ?: domainValues[domain.lowercase()] ?: 0.5f
+            val v = sanitizeUnitFloat(rawV, default = 0.5f, minVal = 0.001f, maxVal = 1.0f)
             sumW += w
             sumWOverV += w / v.toDouble()
         }
-        val hw = if (sumWOverV > 0.0) (sumW / sumWOverV).toFloat() else 0.5f
-        val rounded = kotlin.math.round(hw.coerceIn(0.0f, 1.0f) * 10000.0f) / 10000.0f
-        return rounded
+        val hw = if (sumWOverV > 0.0 && sumW.isFinite() && sumWOverV.isFinite()) {
+            sanitizeUnitFloat((sumW / sumWOverV).toFloat())
+        } else {
+            0.5f
+        }
+        return kotlin.math.round(hw * 10000.0f) / 10000.0f
     }
 
     /**
@@ -318,10 +334,11 @@ object AkgeTensorKernel {
         prevCommitmentHash: String = "GENESIS",
         hmacKey: String? = null
     ): String {
+        val safeR = sanitizeUnitFloat(rSystemic)
         val digest = MessageDigest.getInstance("SHA-256")
         val queryHash = digest.digest(query.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
-        val rFormatted = String.format(java.util.Locale.US, "%.4f", rSystemic)
+        val rFormatted = String.format(java.util.Locale.US, "%.4f", safeR)
         val payload = buildString {
             append("OMNIS-ZK-PROOF||")
             append(queryHash)
@@ -352,6 +369,36 @@ object AkgeTensorKernel {
     }
 
     /**
+     * Konstantně-časová kryptografická verifikace ZK Audit Ledger závazku.
+     */
+    fun verifyCryptographicAuditCommitment(
+        query: String,
+        rSystemic: Float,
+        tier: String,
+        nonce: String,
+        expectedCommitmentHash: String,
+        overrideActive: Boolean = false,
+        prevCommitmentHash: String = "GENESIS",
+        hmacKey: String? = null
+    ): Boolean {
+        val expected = expectedCommitmentHash.trim().lowercase()
+        if (expected.isEmpty()) return false
+        val recomputed = computeCryptographicAuditCommitment(
+            query = query,
+            rSystemic = rSystemic,
+            tier = tier,
+            nonce = nonce,
+            overrideActive = overrideActive,
+            prevCommitmentHash = prevCommitmentHash,
+            hmacKey = hmacKey
+        )
+        return MessageDigest.isEqual(
+            recomputed.toByteArray(Charsets.UTF_8),
+            expected.toByteArray(Charsets.UTF_8)
+        )
+    }
+
+    /**
      * Zachovaná kompatibilní signatura pro auditní otisk (SHA-256 Hash-Chain bez externího HMAC klíče).
      */
     fun computeAkgeZkCommitmentHash(
@@ -370,12 +417,13 @@ object AkgeTensorKernel {
 
     fun computeSystemStress(weights: Map<String, Float>): Float {
         var stressAcc = 0.0f
-        weights.values.forEach { w ->
+        weights.values.forEach { rawW ->
+            val w = sanitizeUnitFloat(rawW)
             if (w < 0.5f) {
                 stressAcc += (0.5f - w) * 2.0f
             }
         }
-        return (stressAcc / DOMAIN_KEYS.size).coerceIn(0.0f, 1.0f)
+        return sanitizeUnitFloat(stressAcc / DOMAIN_KEYS.size, default = 0.0f)
     }
 
     fun computeStateCommitment(weights: Map<String, Float>, sigma: Float, timestamp: Long): String {
@@ -416,7 +464,7 @@ object AkgeTensorKernel {
         val current = _kernelState.value
         val updatedWeights = current.domainWeights.toMutableMap()
         newWeightsMap.forEach { (domain, w) ->
-            updatedWeights[domain] = w.coerceIn(0.0f, 1.0f)
+            updatedWeights[domain] = sanitizeUnitFloat(w)
         }
 
         val preCheckStressed = updatedWeights.filterValues { it < 0.35f }.keys

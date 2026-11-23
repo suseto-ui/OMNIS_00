@@ -14,6 +14,9 @@ import com.example.data.OmnisDatabase
 import com.example.data.OmnisRecord
 import com.example.data.OmnisRepository
 import com.example.engine.AkgeTensorKernel
+import com.example.engine.TopologicalInferenceEngine
+import com.example.engine.UnifiedResponseEvaluator
+import com.example.engine.VectorRagEngine
 import com.example.gateway.AkgeInterceptor
 import com.example.gateway.GateId
 import com.example.gateway.GateStatus
@@ -183,5 +186,84 @@ class Phase1To3HardeningTest {
         assertNotNull(repo.lastOutboxSyncTimestamp.first())
 
         db.close()
+    }
+
+    @Test
+    fun phase3And4_tensorNanGuards64DL2NormZkVerificationAndRbacIsolation() {
+        // 1. NaN/Inf edge-case protection in AKGE-8D + Gate G6 Shannon entropy
+        val nanScores = mapOf(
+            "SYS" to Float.NaN,
+            "ECON" to Float.POSITIVE_INFINITY,
+            "SEC" to Float.NEGATIVE_INFINITY,
+            "LAW" to 0.9f
+        )
+        val hw = AkgeTensorKernel.computeWeightedHarmonicMean(nanScores)
+        assertTrue(hw.isFinite() && hw in 0.0f..1.0f)
+
+        val topo = TopologicalInferenceEngine.evaluateTopologicalMetrics(nanScores)
+        assertTrue(topo.shannonEntropy.isFinite())
+        assertTrue(topo.shannonEntropy < 2.08f)
+
+        // 2. 64D L2-normalization
+        val raw = FloatArray(64) { idx ->
+            when (idx) {
+                0 -> Float.NaN
+                1 -> 3.0f
+                2 -> 4.0f
+                3 -> Float.POSITIVE_INFINITY
+                else -> 0.0f
+            }
+        }
+        val normed = VectorRagEngine.normalizeL264D(raw)
+        assertEquals(64, normed.size)
+        val l2Sum = normed.fold(0.0f) { acc, v -> acc + v * v }
+        assertEquals(1.0f, l2Sum, 0.001f)
+
+        // 3. ZK Audit Commitment generation & constant-time verification
+        val hash = AkgeTensorKernel.computeCryptographicAuditCommitment(
+            query = "Phase 4 ZK commitment test",
+            rSystemic = 0.9123f,
+            tier = "APPROVED",
+            nonce = "0xABCD",
+            overrideActive = false
+        )
+        assertTrue(
+            AkgeTensorKernel.verifyCryptographicAuditCommitment(
+                query = "Phase 4 ZK commitment test",
+                rSystemic = 0.9123f,
+                tier = "APPROVED",
+                nonce = "0xABCD",
+                expectedCommitmentHash = hash,
+                overrideActive = false
+            )
+        )
+        assertFalse(
+            AkgeTensorKernel.verifyCryptographicAuditCommitment(
+                query = "Phase 4 ZK commitment test",
+                rSystemic = 0.9123f,
+                tier = "OVERRIDE",
+                nonce = "0xABCD",
+                expectedCommitmentHash = hash,
+                overrideActive = true
+            )
+        )
+
+        // 4. UnifiedResponseEvaluator RBAC isolation (STANDARD_USER vs ADMIN_OPERATOR)
+        val stdView = UnifiedResponseEvaluator.evaluateResponseForRole(
+            query = "Vyhodnoť bezpečnost systému",
+            response = "Architektura splňuje nulovou latenci a kryptografickou izolaci.",
+            role = UserRole.STANDARD_USER
+        )
+        assertEquals("REDACTED_STANDARD_USER", stdView.diagnosticBreakdown)
+        assertEquals(null, stdView.ragCosineScore)
+        assertTrue(stdView.unifiedQualityIndex.isFinite())
+
+        val admView = UnifiedResponseEvaluator.evaluateResponseForRole(
+            query = "Vyhodnoť bezpečnost systému",
+            response = "Architektura splňuje nulovou latenci a kryptografickou izolaci.",
+            role = UserRole.ADMIN_OPERATOR
+        )
+        assertTrue(admView.diagnosticBreakdown.startsWith("ADMIN_FORENSIC["))
+        assertNotNull(admView.ragCosineScore)
     }
 }

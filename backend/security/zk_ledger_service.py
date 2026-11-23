@@ -8,7 +8,9 @@ Vzorec závazku (1:1 parita s triggerem `zk_audit_ledger_before_insert` v `backe
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+import math
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
@@ -66,12 +68,36 @@ class ZkAuditLedgerService:
         nonce: str,
         override_active: bool = False,
     ) -> str:
+        r_safe = min(1.0, max(0.0, float(r_systemic))) if math.isfinite(float(r_systemic)) else 0.5
         canonical = (
-            f"OMNIS-ZK-PROOF||{prev_hash}||{query_hash}||{float(r_systemic):.4f}||{tier}||{nonce}"
+            f"OMNIS-ZK-PROOF||{prev_hash}||{query_hash}||{r_safe:.4f}||{tier}||{nonce}"
         )
         if override_active:
             canonical += "||OVERRIDE_ACTIVE"
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def verify_canonical_commitment(
+        cls,
+        *,
+        prev_hash: str,
+        query: str,
+        r_systemic: float,
+        tier: str,
+        nonce: str,
+        expected_hash: str,
+        override_active: bool = False,
+    ) -> bool:
+        q_hash = cls.hash_query(query)
+        recomputed = cls.compute_canonical_commitment(
+            prev_hash=prev_hash,
+            query_hash=q_hash,
+            r_systemic=r_systemic,
+            tier=tier,
+            nonce=nonce,
+            override_active=override_active,
+        )
+        return hmac.compare_digest(recomputed, str(expected_hash or "").strip())
 
     @staticmethod
     async def ensure_sqlite_immutability_triggers(db: AsyncSession) -> None:

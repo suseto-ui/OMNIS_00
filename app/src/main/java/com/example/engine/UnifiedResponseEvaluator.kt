@@ -1,7 +1,7 @@
 package com.example.engine
 
+import com.example.auth.UserRole
 import com.example.data.MemoryFragment
-import com.example.defense.SigmaOmegaRedTeamingEngine
 
 data class UnifiedEvaluationScore(
     val query: String,
@@ -14,7 +14,21 @@ data class UnifiedEvaluationScore(
     val qualityTier: String
 )
 
+data class RoleScopedEvaluationResult(
+    val role: UserRole,
+    val unifiedQualityIndex: Float,
+    val qualityTier: String,
+    val ragCosineScore: Float?,
+    val tensorStabilityScore: Float?,
+    val impactMatrixScore: Float?,
+    val zeroFluffScore: Float?,
+    val diagnosticBreakdown: String
+)
+
 object UnifiedResponseEvaluator {
+
+    private fun sanitizeUnit(value: Float, default: Float = 0.5f): Float =
+        if (value.isFinite()) value.coerceIn(0.0f, 1.0f) else default
 
     /**
      * Vypočítá Jednotný Index Kvality Q_omnis napříč všemi 4 vyhodnocovacími pilíři:
@@ -27,27 +41,27 @@ object UnifiedResponseEvaluator {
     ): UnifiedEvaluationScore {
         // 1. 64D RAG Cosine Match (S_cos)
         val matches = VectorRagEngine.searchVectorMemory(query, memoryFragments, topK = 1)
-        val ragCos = if (matches.isNotEmpty()) matches[0].cosineSimilarity else 0.75f
+        val ragCos = sanitizeUnit(if (matches.isNotEmpty()) matches[0].cosineSimilarity else 0.75f, default = 0.75f)
 
         // 2. 8D Tensor Coherence & Stability (S_tensor)
         val coherence = TensorCoherenceEvaluator.evaluateCoherence(query, response, matches)
-        val tensorStab = coherence.overallScore / 100f
+        val tensorStab = sanitizeUnit(coherence.overallScore / 100f)
 
         // 3. Win-Win-Win Impact Matrix (S_impact)
         val impactResult = OmnisFivePhaseExecutor.evaluateImpactMatrix(query, emptyMap())
-        val impactScore = impactResult.winWinWinScore
+        val impactScore = sanitizeUnit(impactResult.winWinWinScore)
 
         // 4. Zero-Fluff Compliance (S_zero_fluff)
         val isZeroFluff = ApexOrchestratorEngine.isZeroFluffCompliant(response)
         val zeroFluffScore = if (isZeroFluff) 1.0f else 0.40f
 
         // Celkové agregované Q_omnis skóre
-        val unifiedIndex = (
+        val unifiedIndex = sanitizeUnit(
             0.30f * ragCos +
-            0.25f * tensorStab +
-            0.25f * impactScore +
-            0.20f * zeroFluffScore
-        ).coerceIn(0.0f, 1.0f)
+                0.25f * tensorStab +
+                0.25f * impactScore +
+                0.20f * zeroFluffScore
+        )
 
         val tier = when {
             unifiedIndex >= 0.90f -> "EXCELLENT"
@@ -66,5 +80,40 @@ object UnifiedResponseEvaluator {
             unifiedQualityIndex = unifiedIndex,
             qualityTier = tier
         )
+    }
+
+    /**
+     * Striktní RBAC izolace výstupu validátoru Q_omnis pro roli STANDARD_USER vs. ADMIN_OPERATOR.
+     * Běžnému uživateli neposkytuje interní tenzorovou ani forenzní telemetrii.
+     */
+    fun evaluateResponseForRole(
+        query: String,
+        response: String,
+        role: UserRole,
+        memoryFragments: List<MemoryFragment> = emptyList()
+    ): RoleScopedEvaluationResult {
+        val full = evaluateResponse(query, response, memoryFragments)
+        return when (role) {
+            UserRole.ADMIN_OPERATOR -> RoleScopedEvaluationResult(
+                role = UserRole.ADMIN_OPERATOR,
+                unifiedQualityIndex = full.unifiedQualityIndex,
+                qualityTier = full.qualityTier,
+                ragCosineScore = full.ragCosineScore,
+                tensorStabilityScore = full.tensorStabilityScore,
+                impactMatrixScore = full.impactMatrixScore,
+                zeroFluffScore = full.zeroFluffScore,
+                diagnosticBreakdown = "ADMIN_FORENSIC[S_cos=${full.ragCosineScore}, S_tensor=${full.tensorStabilityScore}, S_impact=${full.impactMatrixScore}, S_zf=${full.zeroFluffScore}]"
+            )
+            UserRole.STANDARD_USER -> RoleScopedEvaluationResult(
+                role = UserRole.STANDARD_USER,
+                unifiedQualityIndex = full.unifiedQualityIndex,
+                qualityTier = full.qualityTier,
+                ragCosineScore = null,
+                tensorStabilityScore = null,
+                impactMatrixScore = null,
+                zeroFluffScore = null,
+                diagnosticBreakdown = "REDACTED_STANDARD_USER"
+            )
+        }
     }
 }

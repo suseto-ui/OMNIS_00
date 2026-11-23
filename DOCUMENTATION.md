@@ -69,9 +69,9 @@ flowchart TD
 ```
 
 ### 2.1 Sjednocená Perzistenční Vrstva
-1. **Android Edge (`OmnisDatabase` v18 + SQLCipher):**
+1. **Android Edge (`OmnisDatabase` v19 + SQLCipher):**
    - Šifrovaná databáze `omnis_encrypted_db` využívající AES-256-CBC a klíče spravované v Android Keystore (`DatabasePassphraseProvider`).
-   - Atomický zápis zpráv a událostí do `omnis_sync_outbox`, odbavovaný přes `OmnisBatchSyncWorker` a `OmnisSyncRepository` (`/api/v1/sync/batch`).
+   - Atomický zápis zpráv a událostí do `omnis_sync_outbox` a lokální 64D L2-normalizované vektorové úložiště `omnis_local_vectors_64d` (`MIGRATION_18_19`), odbavované přes `OmnisBatchSyncWorker` a `OmnisSyncRepository` (`/api/v1/sync/batch`).
 2. **Backend Core (`PostgreSQL 17` Multi-Engine — `backend/db/init.sql`):**
    - **`pgvector`**: Tabulka `public.rag_memory_64d` s HNSW kosinovým indexem (`m = 16, ef_construction = 128`) a hybridním RRF vyhledáváním (`hybrid_search_knowledge`).
    - **`Apache AGE`**: Perzistentní graf `omnis_causal_graph` synchronizovaný s `public.causal_nodes` a `public.causal_edges`. `AgeCausalGraphRepository` kompiluje neměnné `CsrGraphSnapshot` a při `LISTEN omnis_graph_invalidated` provádí lock-free atomickou výměnu reference.
@@ -82,7 +82,8 @@ flowchart TD
 
 ### 2.2 Inferenční & Bezpečnostní Kaskáda
 - **Android klient:** `FirebaseAiService` (`gemini-3.8-flash` / `gemini-3.5-flash-lite`) a lokální `HybridInferenceOrchestrator` (>= 4 GB RAM práh, 1500 ms timeout, bez dynamického načítání `.so`/`.dex`/`.jar`).
-- **Backend server:** `backend/app/llm_cascade.py` (Tier 1 lokální Gemma 4 -> Groq -> Gemini -> OpenRouter) a volitelné ECDSA P-256 podepisování při `ENABLE_CLOUD_KMS=true` (výchozí je deterministický `HMAC-SHA256-HASH-CHAIN`).
+- **Backend server:** `backend/app/llm_cascade.py` (Tier 1 lokální Gemma 4 dle `tools/gemma4/agent.yaml` -> Groq -> Gemini -> OpenRouter s `ProviderCircuitBreaker` CLOSED/OPEN/HALF_OPEN), vystaveno přes `/api/v1/inference/cascade` a `/api/v1/inference/cascade/status`, s volitelným ECDSA P-256 podepisováním při `ENABLE_CLOUD_KMS=true` (výchozí je deterministický `HMAC-SHA256-HASH-CHAIN`).
+- **Release `v4.5.0-GA` Pipeline:** `./scripts/release_v4_5_0.sh` ověří všechny brány (Fáze 1–4), spustí Android & Python testy, sestaví podepsané R8/ProGuard APK/AAB (`versionCode = 450`, `versionName = "4.5.0"`) a vygeneruje `release-v4.5.0/SHA256SUMS.txt`.
 
 ---
 

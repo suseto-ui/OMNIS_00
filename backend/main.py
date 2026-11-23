@@ -351,7 +351,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="O.M.N.I.S. Cognitive Architecture API",
     description="Omni-Modal Network for Integrated Synthesis - Backend & Impact Matrix Engine",
-    version="2.0.0",
+    version="4.5.0",
     lifespan=lifespan,
 )
 
@@ -365,7 +365,7 @@ _allowed_origins = [
 ]
 _allowed_origin_regex = os.getenv(
     "ALLOWED_ORIGIN_REGEX",
-    r"^https://.*\.run\.app$|^http://localhost(:\d+)?$",
+    r"^https://(.*\.duckdns\.org|.*\.run\.app)$|^http://localhost(:\d+)?$",
 ).strip() or None
 
 app.add_middleware(
@@ -462,6 +462,25 @@ async def get_token_budget_recommendation(sigma: float = 0.15):
         return {"status": "error", "detail": str(exc)}
 
 app.include_router(topology_router)
+
+@app.post("/api/v1/inference/cascade", tags=["LLM Cascade"])
+async def run_unified_llm_cascade(payload: dict):
+    """Jednotná LLM brána propojující lokální Gemma 4 (tools/gemma4/agent.yaml) s cloud failoverem a Circuit Breakerem."""
+    from backend.app.llm_cascade import get_llm_cascade
+
+    messages = payload.get("messages", [{"role": "user", "content": str(payload.get("prompt", "Hello OMNIS"))}])
+    mode = payload.get("mode")
+    cascade = get_llm_cascade()
+    return await cascade.generate_completion(messages, override_mode=mode)
+
+
+@app.get("/api/v1/inference/cascade/status", tags=["LLM Cascade"])
+async def get_llm_cascade_status():
+    """Vrací aktuální stav Circuit Breakerů a načtenou konfiguraci Gemma 4 agenta."""
+    from backend.app.llm_cascade import get_llm_cascade
+
+    return get_llm_cascade().get_breaker_status()
+
 
 @app.get("/download/apk", tags=["System"])
 async def download_apk():
