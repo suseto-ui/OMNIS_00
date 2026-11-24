@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       backend_url:
-        description: "Production Cloud Run OMNIS_BACKEND_URL"
+        description: "Production Sovereign OMNIS_BACKEND_URL"
         required: false
-        default: "https://ais-dev-43vgrwdupsfj4ht5yohxcz-291037164760.europe-west3.run.app"
+        default: "https://omnis-apex-core.duckdns.org"
 
 permissions:
   contents: write
@@ -46,7 +46,7 @@ jobs:
 
       - name: Build Android Release AAB & APK
         env:
-          OMNIS_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://ais-dev-43vgrwdupsfj4ht5yohxcz-291037164760.europe-west3.run.app' }}
+          OMNIS_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://omnis-apex-core.duckdns.org' }}
         run: |
           if [ -f "./gradlew" ]; then
             ./gradlew :app:bundleRelease :app:assembleRelease -POMNIS_BACKEND_URL="$OMNIS_BACKEND_URL" --no-daemon --stacktrace

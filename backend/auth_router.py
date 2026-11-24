@@ -11,10 +11,10 @@ from .database import get_db, is_mock_session
 from .models import User, UserProfile
 from .schemas import UserCreate, UserLogin, Token, GoogleAuthRequest, UserProfileResponse, UserProfileUpdate
 from .security import get_password_hash, verify_password, create_access_token, decode_access_token
-from .security.firestore_store import fs_find_one, fs_get_doc, fs_list_collection, fs_set_doc
+from .security.in_memory_store import fs_find_one, fs_get_doc, fs_list_collection, fs_set_doc
 from fastapi.security import OAuth2PasswordBearer
 
-from backend.gcp_secrets import get_secret
+from backend.security.env_secrets import get_secret
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 user_router = APIRouter(prefix="/api/user", tags=["User Profile"])
@@ -23,7 +23,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 ROOT_ADMIN_EMAIL = "susetofu@gmail.com"
 GOOGLE_CLIENT_ID = (get_secret("GOOGLE_CLIENT_ID") or "").strip() or None
-FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "gen-lang-client-0328950802")
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "").strip()
 
 
 def _fs_dict_to_user(data: dict) -> User:

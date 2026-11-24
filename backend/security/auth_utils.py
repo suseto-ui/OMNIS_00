@@ -9,7 +9,7 @@ from typing import Optional
 from jose import jwt
 from passlib.context import CryptContext
 
-from backend.gcp_secrets import get_secret
+from backend.security.env_secrets import get_secret
 
 _sec_logger = logging.getLogger("omnis.security.auth")
 

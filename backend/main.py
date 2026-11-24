@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .database import get_db, init_db, is_mock_session
-from backend.security.firestore_store import fs_delete_doc, fs_get_doc, fs_list_collection, fs_set_doc
+from backend.security.in_memory_store import fs_delete_doc, fs_get_doc, fs_list_collection, fs_set_doc
 from backend.models import Conversation, Message
 from backend.schemas import (
     ThreadCreateRequest,

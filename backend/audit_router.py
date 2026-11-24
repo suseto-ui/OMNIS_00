@@ -7,11 +7,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-try:
-    from google.cloud import firestore
-except ImportError:
-    firestore = None
-
 from backend.auth_router import get_current_user
 from backend.config import get_settings
 from backend.database import get_audit_db, get_db, hybrid_search_knowledge
@@ -37,8 +32,6 @@ logger = logging.getLogger("omnis.audit")
 
 router = APIRouter(prefix="/api/audit", tags=["Audit & Integrity"])
 akge_router = APIRouter(prefix="/api/akge", tags=["AKGE-8D Orchestrator"])
-
-FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID", "").strip()
 
 
 class PoNLogRequest(BaseModel):
@@ -121,20 +114,6 @@ async def log_proof_of_necessity(
     doc_data["commitmentAlgorithm"] = zk_commitment.algorithm
     doc_data["overrideActive"] = effective_override
     doc_data["proofOfNecessity"] = pon_schema.model_dump()
-
-    settings = get_settings()
-    if (
-        not settings.USE_OSS_POSTGRES_SYNC
-        and settings.ENABLE_FIRESTORE_CQRS_PROJECTION
-        and FIRESTORE_DATABASE_ID
-        and firestore is not None
-    ):
-        try:
-            db_fs = firestore.Client(database=FIRESTORE_DATABASE_ID)
-            doc_ref = db_fs.collection("audit_logs").document()
-            doc_ref.set(doc_data)
-        except Exception as exc:
-            logger.warning("Firestore audit_logs write skipped: %s", exc)
 
     return {
         "status": "success",

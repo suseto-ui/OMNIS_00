@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import get_db, is_mock_session
 from backend.models import User, AuditLog
 from backend.auth_router import get_current_user
-from backend.security.firestore_store import fs_delete_doc, fs_list_collection, fs_set_doc
+from backend.security.in_memory_store import fs_delete_doc, fs_list_collection, fs_set_doc
 from sqlalchemy import select, func
 import logging
 import uuid

@@ -230,27 +230,6 @@ async def analyze_inference(
         except Exception:
             pass
 
-    if not get_settings().USE_OSS_POSTGRES_SYNC:
-        try:
-            from backend.security.firestore_store import fs_set_doc
-
-            fs_set_doc(
-                "proof_of_necessity",
-                commitment.commitment_hash,
-                {
-                    "callerUid": caller.uid,
-                    "status": "APPROVED" if gates.all_passed else "REFUSED",
-                    "qOmnis": q_omnis,
-                    "sigma": sigma,
-                    "proofOfNecessity": pon.model_dump(),
-                    "gateEvaluation": gates.model_dump(),
-                    "auditCommitment": commitment.model_dump(),
-                },
-                merge=True,
-            )
-        except Exception:
-            pass
-
     response_dict = {
         "status": "APPROVED" if gates.all_passed else "REFUSED",
         "sanitized_query": clean_q,

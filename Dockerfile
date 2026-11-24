@@ -53,7 +53,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD python3 -c "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.getenv(\"PORT\", \"8080\")}/healthz', timeout=3)" || exit 1
 
-# Dynamické navázání na Cloud Run PORT proměnnou prostředí (1 worker + 4 thready pro Free Tier 512MiB)
+# Dynamické navázání na PORT proměnnou prostředí (1 worker + 4 thready)
 CMD exec gunicorn -k uvicorn.workers.UvicornWorker backend.main:app \
   --bind 0.0.0.0:${PORT:-8080} \
   --workers 1 \

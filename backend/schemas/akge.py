@@ -243,8 +243,8 @@ class CryptographicAuditCommitment(BaseModel):
     algorithm: str = Field(default="HMAC-SHA256-HASH-CHAIN", description="Použitý kryptografický algoritmus")
     hmac_key: Optional[str] = Field(default=None, exclude=True, repr=False)
     commitment_hash: str = Field(default="", description="Výsledný kryptografický otisk")
-    kms_key_version: Optional[str] = Field(default=None, description="Volitelná verze klíče Cloud KMS ECDSA P-256")
-    kms_signature_b64: Optional[str] = Field(default=None, description="Volitelný Base64 podpis z Google Cloud KMS")
+    kms_key_version: Optional[str] = Field(default=None, description="Volitelná verze externího podpisového klíče")
+    kms_signature_b64: Optional[str] = Field(default=None, description="Volitelný Base64 podpis obálky auditu")
     timestamp: int = Field(default_factory=lambda: int(datetime.now(timezone.utc).timestamp() * 1000))
 
     @model_validator(mode="after")

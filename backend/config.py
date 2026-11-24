@@ -36,17 +36,8 @@ class OmnisSettings(BaseSettings):
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     GEMINI_API_KEYS: str = os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", ""))
     AUDIT_HMAC_KEY: str = os.getenv("AUDIT_HMAC_KEY", "")
-    FIREBASE_PROJECT_ID: str = os.getenv("FIREBASE_PROJECT_ID", "")
-    FIRESTORE_DATABASE_ID: str = os.getenv("FIRESTORE_DATABASE_ID", "")
     REQUIRE_APP_CHECK: bool = os.getenv("REQUIRE_APP_CHECK", "false").lower() in ("1", "true", "yes")
     OMNIS_SYNC_API_KEY: str = os.getenv("OMNIS_SYNC_API_KEY", "")
-    ENABLE_CLOUD_KMS: bool = os.getenv("ENABLE_CLOUD_KMS", "false").lower() in ("1", "true", "yes")
-    CLOUD_KMS_KEY_NAME: str = os.getenv("CLOUD_KMS_KEY_NAME", "")
-    ENABLE_FIRESTORE_CQRS_PROJECTION: bool = os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "false").lower() in (
-        "1",
-        "true",
-        "yes",
-    )
     USE_OSS_POSTGRES_SYNC: bool = os.getenv("USE_OSS_POSTGRES_SYNC", "true").lower() in ("1", "true", "yes")
     AUDIT_DATABASE_URL: str = os.getenv("AUDIT_DATABASE_URL", "")
     ELECTRIC_URL: str = os.getenv("ELECTRIC_URL", "http://electric:3000")
@@ -77,13 +68,8 @@ class OmnisSettings(BaseSettings):
             missing.append("AUDIT_HMAC_KEY")
         if _is_missing_or_placeholder(self.OMNIS_SYNC_API_KEY):
             missing.append("OMNIS_SYNC_API_KEY")
-        has_sql = not _is_missing_or_placeholder(self.DATABASE_URL)
-        has_firestore = not _is_missing_or_placeholder(self.FIRESTORE_DATABASE_ID)
-        if self.USE_OSS_POSTGRES_SYNC:
-            if not has_sql:
-                missing.append("DATABASE_URL")
-        elif not has_firestore and not has_sql:
-            missing.append("DATABASE_URL or FIRESTORE_DATABASE_ID")
+        if _is_missing_or_placeholder(self.DATABASE_URL):
+            missing.append("DATABASE_URL")
         if missing:
             raise RuntimeError(
                 f"CRITICAL STARTUP FAILURE: Missing required production secrets: {', '.join(missing)}"
@@ -98,14 +84,8 @@ def get_settings() -> OmnisSettings:
         DATABASE_URL=os.getenv("DATABASE_URL", ""),
         GEMINI_API_KEYS=os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", "")),
         AUDIT_HMAC_KEY=os.getenv("AUDIT_HMAC_KEY", ""),
-        FIREBASE_PROJECT_ID=os.getenv("FIREBASE_PROJECT_ID", ""),
-        FIRESTORE_DATABASE_ID=os.getenv("FIRESTORE_DATABASE_ID", ""),
         REQUIRE_APP_CHECK=os.getenv("REQUIRE_APP_CHECK", "false").lower() in ("1", "true", "yes"),
         OMNIS_SYNC_API_KEY=os.getenv("OMNIS_SYNC_API_KEY", ""),
-        ENABLE_CLOUD_KMS=os.getenv("ENABLE_CLOUD_KMS", "false").lower() in ("1", "true", "yes"),
-        CLOUD_KMS_KEY_NAME=os.getenv("CLOUD_KMS_KEY_NAME", ""),
-        ENABLE_FIRESTORE_CQRS_PROJECTION=os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "false").lower()
-        in ("1", "true", "yes"),
         USE_OSS_POSTGRES_SYNC=os.getenv("USE_OSS_POSTGRES_SYNC", "true").lower() in ("1", "true", "yes"),
         AUDIT_DATABASE_URL=os.getenv("AUDIT_DATABASE_URL", ""),
         ELECTRIC_URL=os.getenv("ELECTRIC_URL", "http://electric:3000"),

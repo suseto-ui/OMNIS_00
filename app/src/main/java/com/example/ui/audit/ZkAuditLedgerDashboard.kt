@@ -14,9 +14,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.data.OverrideHistoryEvent
 import java.text.SimpleDateFormat
 import java.util.*
+
+data class OverrideHistoryEvent(
+    val timestamp: Long = System.currentTimeMillis(),
+    val reason: String = "Sovereign Override",
+    val adminUser: String = "susetofu@gmail.com",
+    val zkSnarkSeal: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    val prevState: String = "STANDARD",
+    val postState: String = "OVERRIDE"
+)
 
 @Composable
 fun ZkAuditLedgerDashboard(
@@ -34,11 +42,11 @@ fun ZkAuditLedgerDashboard(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-        items(events) { event ->
-            OverrideHistoryItem(event)
+            items(events) { event ->
+                OverrideHistoryItem(event)
+            }
         }
     }
-}
 }
 
 @Composable

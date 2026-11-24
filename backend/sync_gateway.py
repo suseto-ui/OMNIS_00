@@ -152,7 +152,6 @@ class SyncOutboxBatchResponse(BaseModel):
     status: str = "SUCCESS"
     synced_count: int
     deduplicated_count: int = 0
-    firestore_projected_count: int = 0
     accepted_keys: List[str] = Field(default_factory=list)
     message: str
     server_timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))
@@ -326,23 +325,13 @@ async def sync_outbox_batch(
         synced += 1
 
     await db.commit()
-    projected_count = 0
-    settings = get_settings()
-    if not settings.USE_OSS_POSTGRES_SYNC and settings.ENABLE_FIRESTORE_CQRS_PROJECTION:
-        try:
-            from backend.security.firestore_store import project_outbox_items_to_firestore
-
-            projected_count = project_outbox_items_to_firestore(payload.items, caller.uid)
-        except Exception as fs_exc:
-            logger.warning("CQRS Firestore projection skipped: %s", fs_exc)
 
     return SyncOutboxBatchResponse(
         status="SUCCESS",
         synced_count=synced,
         deduplicated_count=deduplicated,
-        firestore_projected_count=projected_count,
         accepted_keys=accepted_keys,
-        message=f"Zpracováno {synced} nových outbox položek ({deduplicated} deduplikováno, {projected_count} CQRS projekcí).",
+        message=f"Zpracováno {synced} nových outbox položek ({deduplicated} deduplikováno).",
     )
 
 

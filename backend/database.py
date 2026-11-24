@@ -6,7 +6,7 @@ from typing import AsyncGenerator, Iterable, Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from backend.models import Base
 from sqlalchemy import text
-from backend.gcp_secrets import get_secret
+from backend.security.env_secrets import get_secret
 
 logger = logging.getLogger("omnis.db")
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# O.M.N.I.S. - Git Synchronizační a Exportní Skript
-# Podpora pro GitHub (Personal Access Token) + Google Cloud Repositories
+# O.M.N.I.S. - Git Synchronizační a Exportní Skript (GitHub)
 # ==============================================================================
 
 set -euo pipefail
@@ -44,7 +43,7 @@ git config --global credential.helper "cache --timeout=7200"
 # 4. Načtení GitHub PAT tokenu a repozitáře (bez zápisu PAT do .git/config)
 GITHUB_TOKEN="${GITHUB_TOKEN:-${1:-}}"
 GITHUB_REPO="${GITHUB_REPO:-${2:-https://github.com/suseto-ui/OMNIS.git}}"
-GCP_REPO="${GCP_REPO:-${3:-}}"
+
 
 ASKPASS_SCRIPT=""
 cleanup_askpass() {
@@ -81,14 +80,7 @@ EOF
     export GITHUB_TOKEN
 fi
 
-if [ -n "$GCP_REPO" ]; then
-    if git remote get-url google >/dev/null 2>&1; then
-        git remote set-url google "$GCP_REPO"
-    else
-        git remote add google "$GCP_REPO"
-    fi
-    echo -e "${GREEN}✓ Vzdálený repozitář google (Google Cloud) nastaven.${NC}"
-fi
+
 
 # 5. Staging změn s respektováním .gitignore
 echo -e "${YELLOW}>> Přidávám soubory do stagingu...${NC}"
@@ -98,7 +90,7 @@ git add .
 if git diff-index --quiet HEAD -- 2>/dev/null; then
     echo -e "${GREEN}✓ Žádné nové změny k commitu. Pracovní strom je čistý.${NC}"
 else
-    COMMIT_MSG="feat(omnis): full production release - backend cloud run, google auth & android sync"
+    COMMIT_MSG="feat(omnis): full production release - backend sovereign postgres 17, google auth & android sync"
     git commit -m "$COMMIT_MSG"
     echo -e "${GREEN}✓ Commit vytvořen: $COMMIT_MSG${NC}"
 fi

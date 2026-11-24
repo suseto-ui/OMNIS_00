@@ -229,19 +229,17 @@ def test_q_omnis_sanitizer_and_production_config_guard():
         USE_OSS_POSTGRES_SYNC=True,
         SECRET_KEY="prod-super-strong-jwt-key-value-32chars",
         DATABASE_URL="postgresql+asyncpg://omnis_app_rw:secret@db:5432/omnis_db",
-        FIRESTORE_DATABASE_ID="",
         AUDIT_HMAC_KEY="prod-super-strong-audit-hmac-key",
         OMNIS_SYNC_API_KEY="prod-super-strong-sync-api-key",
     )
     postgres_oss_valid.validate_production_secrets()
 
-    # Non-GCP mode without DATABASE_URL must fail fast even if FIRESTORE_DATABASE_ID is set
+    # Non-GCP mode without DATABASE_URL must fail fast
     postgres_missing_db = OmnisSettings(
         ENV="production",
         USE_OSS_POSTGRES_SYNC=True,
         SECRET_KEY="prod-super-strong-jwt-key-value-32chars",
         DATABASE_URL="",
-        FIRESTORE_DATABASE_ID="legacy-firestore-db",
         AUDIT_HMAC_KEY="prod-super-strong-audit-hmac-key",
         OMNIS_SYNC_API_KEY="prod-super-strong-sync-api-key",
     )
@@ -253,23 +251,10 @@ def test_q_omnis_sanitizer_and_production_config_guard():
         assert "DATABASE_URL" in str(exc)
     assert pg_raised is True
 
-    # Legacy Firestore-primary mode only allowed when USE_OSS_POSTGRES_SYNC=False
-    firestore_primary_valid = OmnisSettings(
-        ENV="production",
-        USE_OSS_POSTGRES_SYNC=False,
-        SECRET_KEY="prod-super-strong-jwt-key-value-32chars",
-        DATABASE_URL="",
-        FIRESTORE_DATABASE_ID="legacy-firestore-db",
-        AUDIT_HMAC_KEY="prod-super-strong-audit-hmac-key",
-        OMNIS_SYNC_API_KEY="prod-super-strong-sync-api-key",
-    )
-    firestore_primary_valid.validate_production_secrets()
-
     insecure = OmnisSettings(
         ENV="production",
         SECRET_KEY="your-secure-random-jwt-secret",
         DATABASE_URL="",
-        FIRESTORE_DATABASE_ID="",
         AUDIT_HMAC_KEY="",
         OMNIS_SYNC_API_KEY="",
     )
