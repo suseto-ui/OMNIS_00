@@ -149,7 +149,7 @@ fun UserDrawerContent(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = session?.username ?: "O.M.N.I.S.",
+                        text = session?.username ?: "OMNIS by Suseto",
                         color = Color.White,
                         fontWeight = FontWeight.Black,
                         fontSize = 15.sp,
@@ -158,7 +158,7 @@ fun UserDrawerContent(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (session != null) "PŘIHLÁŠEN • PROFIL" else "KOGNITIVNÍ PORTÁL",
+                        text = if (session != null) "OMNIS BY SUSETO • PROFIL" else "OMNIS BY SUSETO • PORTÁL",
                         color = OmnisCyan,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -361,6 +361,14 @@ fun UserDrawerContent(
                 selected = activeTab == OmnisTab.DIALECTICS,
                 tint = OmnisCyan,
                 onClick = { onTabSelected(OmnisTab.DIALECTICS) }
+            )
+
+            UserDrawerItem(
+                title = "Multi-Agentní Debata",
+                icon = Icons.Default.Groups,
+                selected = activeTab == OmnisTab.MULTI_AGENT_DEBATE,
+                tint = OmnisCyan,
+                onClick = { onTabSelected(OmnisTab.MULTI_AGENT_DEBATE) }
             )
 
             UserDrawerItem(

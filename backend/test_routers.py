@@ -56,8 +56,10 @@ def test_system_router_health():
     with TestClient(app) as client:
         response = client.get("/healthz")
         assert response.status_code == 200
-        assert response.json() == {"status": "healthy", "service": "O.M.N.I.S. Cognitive Architecture"}
-        
+        payload = response.json()
+        assert payload["status"] == "healthy"
+        assert payload["service"] == "OMNIS by Suseto"
+
         api_response = client.get("/api/health-check")
         assert api_response.status_code == 200
 

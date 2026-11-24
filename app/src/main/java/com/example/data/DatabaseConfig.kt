@@ -66,42 +66,52 @@ object DatabaseConfig {
     }
 
     val host: String by lazy {
-        getConfigOrEnv("CLOUDSQL_HOST")
+        getConfigOrEnv("POSTGRES_HOST")
+            ?: getConfigOrEnv("PG_HOST")
+            ?: getConfigOrEnv("CLOUDSQL_HOST")
             ?: parsedDbUrl["host"]
             ?: ""
     }
 
     val port: String by lazy {
-        getConfigOrEnv("CLOUDSQL_PORT")
+        getConfigOrEnv("POSTGRES_PORT")
+            ?: getConfigOrEnv("PG_PORT")
+            ?: getConfigOrEnv("CLOUDSQL_PORT")
             ?: parsedDbUrl["port"]
             ?: "5432"
     }
 
     val dbName: String by lazy {
-        getConfigOrEnv("CLOUDSQL_DB")
+        getConfigOrEnv("POSTGRES_DB")
+            ?: getConfigOrEnv("PG_DB")
+            ?: getConfigOrEnv("CLOUDSQL_DB")
             ?: parsedDbUrl["dbName"]
             ?: "omnis_db"
     }
 
     val user: String by lazy {
-        getConfigOrEnv("CLOUDSQL_USER")
+        getConfigOrEnv("POSTGRES_USER")
+            ?: getConfigOrEnv("PG_USER")
+            ?: getConfigOrEnv("CLOUDSQL_USER")
             ?: parsedDbUrl["user"]
             ?: "postgres"
     }
 
     val password: String? by lazy {
-        getConfigOrEnv("CLOUDSQL_PASSWORD")
+        getConfigOrEnv("POSTGRES_PASSWORD")
+            ?: getConfigOrEnv("PG_PASSWORD")
+            ?: getConfigOrEnv("CLOUDSQL_PASSWORD")
             ?: parsedDbUrl["password"]
     }
 
     /**
-     * Checks if the required environment credentials for Google Cloud SQL PostgreSQL are provided.
+     * Checks if direct PostgreSQL 17 credentials are configured.
      */
     val isCloudSqlConfigured: Boolean
         get() = !host.isBlank() && !password.isNullOrBlank()
 
     /**
-     * Establishes a direct JDBC Connection to the configured Google Cloud SQL PostgreSQL instance.
+     * Establishes a direct JDBC Connection to the configured PostgreSQL 17 instance (when enabled).
      */
     fun getPostgresConnection(): Connection? {
         if (isTesting) {
@@ -110,7 +120,7 @@ object DatabaseConfig {
         val currentHost = host
         val currentPass = password
         if (currentPass.isNullOrBlank()) {
-            Log.w(TAG, "PostgreSQL password not provided. Operating in safe local Room cache mode.")
+            Log.w(TAG, "PostgreSQL password not provided. Operating via Room Outbox + REST/ElectricSQL sync.")
             return null
         }
 
@@ -125,7 +135,7 @@ object DatabaseConfig {
 
             if (rootCert.exists() && clientCert.exists() && keyFile != null) {
                 sslParams = "?sslmode=verify-ca&sslrootcert=${rootCert.absolutePath}&sslcert=${clientCert.absolutePath}&sslkey=${keyFile.absolutePath}"
-                Log.i(TAG, "Configuring Cloud SQL mTLS certificates from: ${dir.absolutePath}")
+                Log.i(TAG, "Configuring PostgreSQL mTLS certificates from: ${dir.absolutePath}")
                 break
             }
         }
@@ -137,7 +147,7 @@ object DatabaseConfig {
             DriverManager.setLoginTimeout(3)
             DriverManager.getConnection(url, user, currentPass)
         } catch (e: Exception) {
-            Log.w(TAG, "Google Cloud SQL PostgreSQL connection failed (Network is offline or Cloud SQL firewall blocked access: ${e.message}). Falling back safely to local Room database.")
+            Log.w(TAG, "Direct PostgreSQL 17 connection failed (${e.message}). Falling back safely to local Room + Outbox.")
             null
         }
     }

@@ -349,8 +349,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(
-    title="O.M.N.I.S. Cognitive Architecture API",
-    description="Omni-Modal Network for Integrated Synthesis - Backend & Impact Matrix Engine",
+    title="OMNIS by Suseto — Cognitive Architecture API",
+    description="OMNIS by Suseto (O.M.N.I.S. APEX v4.5.0-GA) - Sovereign PostgreSQL 17 & Impact Matrix Backend",
     version="4.5.0",
     lifespan=lifespan,
 )
@@ -480,6 +480,9 @@ async def get_llm_cascade_status():
     from backend.app.llm_cascade import get_llm_cascade
 
     return get_llm_cascade().get_breaker_status()
+
+
+from backend.system import health_check as healthz
 
 
 @app.get("/download/apk", tags=["System"])

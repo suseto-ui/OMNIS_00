@@ -72,7 +72,7 @@ fun AdminDbHealthCard(
                 ) {
                     Icon(Icons.Default.Storage, contentDescription = null, tint = OmnisEmerald, modifier = Modifier.size(18.dp))
                     Text(
-                        text = "HYBRIDNÍ DATABÁZE (ROOM v18 + PG17)",
+                        text = "HYBRIDNÍ DATABÁZE (ROOM v19 + PG17)",
                         color = OmnisEmerald,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -135,7 +135,7 @@ fun AdminDbHealthCard(
                 java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(it))
             } ?: "Čeká na první dávku"
 
-            // Connection Info Box (Cloud Sync Status: Outbox + Firestore Primary + Optional Cloud SQL)
+            // Connection Info Box (Sovereign Non-GCP Outbox -> PostgreSQL 17 / ElectricSQL)
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = OmnisPanelDark.copy(alpha = 0.6f),

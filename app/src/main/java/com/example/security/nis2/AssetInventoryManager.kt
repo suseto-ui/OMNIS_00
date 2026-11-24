@@ -32,10 +32,10 @@ data class SbomComponent(
 object AssetInventoryManager {
 
     val protectedAssets: List<ProtectedAsset> = listOf(
-        ProtectedAsset("AST-001", "OMNIS Mobile Endpoint Node", "APPLICATION", "HIGH", "Mobile Ops", "Zone A - Client"),
-        ProtectedAsset("AST-002", "Cloud Run Backend & AI Engine", "CLOUD_SERVICE", "CRITICAL", "Infrastructure", "Zone B - DMZ"),
-        ProtectedAsset("AST-003", "Room SQLite Knowledge Vault", "DATABASE", "HIGH", "Data Guardian", "Zone A - Secure Enclave"),
-        ProtectedAsset("AST-004", "PostgreSQL Cloud SQL Telemetry", "DATABASE", "CRITICAL", "DBA Lead", "Zone C - Core Storage"),
+        ProtectedAsset("AST-001", "OMNIS by Suseto Mobile Endpoint Node", "APPLICATION", "HIGH", "Mobile Ops", "Zone A - Client"),
+        ProtectedAsset("AST-002", "OMNIS by Suseto FastAPI & AI Engine", "CLOUD_SERVICE", "CRITICAL", "Infrastructure", "Zone B - DMZ"),
+        ProtectedAsset("AST-003", "Room v19 SQLCipher Knowledge Vault", "DATABASE", "HIGH", "Data Guardian", "Zone A - Secure Enclave"),
+        ProtectedAsset("AST-004", "PostgreSQL 17 Multi-Engine (pgvector + AGE)", "DATABASE", "CRITICAL", "DBA Lead", "Zone C - Core Storage"),
         ProtectedAsset("AST-005", "HSM Cryptographic Keystore", "HARDWARE", "CRITICAL", "CISO Office", "Zone D - Airgap")
     )
 

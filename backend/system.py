@@ -14,12 +14,17 @@ system_router = APIRouter(tags=["System"])
 @system_router.get("/api/health")
 @system_router.get("/api/health-check")
 async def health_check() -> dict[str, str]:
-    """Health check endpoint for Cloud Run and orchestrator probes."""
-    return {"status": "healthy", "service": "O.M.N.I.S. Cognitive Architecture"}
+    """Unified Non-GCP health check endpoint for Docker Compose, Caddy, and mobile clients."""
+    return {
+        "status": "healthy",
+        "service": "OMNIS by Suseto",
+        "version": "4.5.0",
+        "infrastructure": "100_percent_open_source_zero_cost_pg17",
+    }
 
 @system_router.get("/api/system/db-check")
 async def db_check(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
-    """Checks the live connectivity status of the Google Cloud SQL instance."""
+    """Checks the live connectivity status of the PostgreSQL 17 instance."""
     try:
         from backend.database import engine
         if engine is None:

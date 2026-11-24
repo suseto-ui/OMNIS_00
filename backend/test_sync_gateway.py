@@ -208,3 +208,62 @@ def test_sync_outbox_batch_idempotency():
         assert second_data["status"] == "SUCCESS"
         assert second_data["synced_count"] + second_data["deduplicated_count"] >= 1
 
+
+def test_root_healthz_and_omnis_message_snake_case_outbox():
+    """
+    Ověří sjednocený /healthz endpoint s názvem OMNIS by Suseto a příjem Room v19
+    Outbox položky s entity_type='OMNIS_MESSAGE' a snake_case klíči.
+    """
+    import json
+
+    outbox_payload = {
+        "items": [
+            {
+                "idempotency_key": "android_outbox_snake_case_001",
+                "entity_type": "OMNIS_MESSAGE",
+                "entity_id": 9002,
+                "session_id": "thread_pg17",
+                "sequence_number": 1,
+                "payload_json": json.dumps({
+                    "id": 9002,
+                    "role": "assistant",
+                    "content": "Sovereign PG17 Outbox test",
+                    "cognitive_process": "AUDIT",
+                    "val_sys": 0.91,
+                    "val_econ": 0.84,
+                    "val_psych": 0.88,
+                    "val_eco": 0.80,
+                    "val_law": 0.93,
+                    "val_sec": 0.96,
+                    "val_phys": 0.79,
+                    "val_soc": 0.85,
+                    "composite_score": 0.87,
+                    "domain": "SYS",
+                    "timestamp": 1700000009000,
+                    "defense_tier": "L0_VERIFIED",
+                    "thread_id": "thread_pg17",
+                    "thread_title": "PG17 Thread",
+                    "user_name": "operator",
+                }),
+                "created_at": 1700000009000,
+            }
+        ],
+        "client_version": "4.5",
+    }
+
+    with TestClient(app) as client:
+        hz = client.get("/healthz")
+        assert hz.status_code == 200
+        hz_data = hz.json()
+        assert hz_data["service"] == "OMNIS by Suseto"
+        assert hz_data["status"] == "healthy"
+
+        headers = {"Authorization": f"Bearer {TEST_SYNC_KEY}"}
+        resp = client.post("/api/v1/sync/batch", json=outbox_payload, headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "SUCCESS"
+        assert data["synced_count"] == 1
+        assert "android_outbox_snake_case_001" in data["accepted_keys"]
+
+

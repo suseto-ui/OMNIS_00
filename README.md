@@ -1,6 +1,6 @@
-# O.M.N.I.S. APEX v4.5 / v7.0 (Autonomous Polymathic Execution & Invariant Engine)
+# OMNIS by Suseto (O.M.N.I.S. APEX v4.5 / v7.0)
 
-**O.M.N.I.S. APEX** (**OMNIS by Suseto**) je transdisciplinární kognitivní architektura a exekuční platforma pro Android (Kotlin 2.0 & Jetpack Compose Material 3) integrovaná se sjednoceným open-source Python FastAPI backendem, **PostgreSQL 17** (`pgvector` 64D HNSW + `Apache AGE` kauzální graf + `pgcrypto`), **ElectricSQL 1.8.1** synchronizací a striktním Zero-Fluff výstupním validátorem.
+**OMNIS by Suseto** (**O.M.N.I.S. APEX** — Autonomous Polymathic Execution & Invariant Engine) je transdisciplinární kognitivní architektura a exekuční platforma pro Android (Kotlin 2.0 & Jetpack Compose Material 3) integrovaná se sjednoceným open-source Python FastAPI backendem, **PostgreSQL 17** (`pgvector` 64D HNSW + `Apache AGE` kauzální graf + `pgcrypto`), **ElectricSQL 1.8.1** synchronizací a striktním Zero-Fluff výstupním validátorem.
 
 ---
 
@@ -99,24 +99,24 @@ Každý dotaz (vstupní větev) i vygenerovaná odpověď před vstupem do 8D Ma
 
 ```mermaid
 flowchart LR
-    Q[Vstupní / Výstupní Data] --> G1[G1: Entry Point & Typová Sanitizace]
-    G1 --> G2[G2: Concept Coupling & 8D Sanitizace]
-    G2 --> G3[G3: Causal Path & Konečnost NaN/Inf]
-    G3 --> G4[G4: Quotable Evidence & Nenulový Vektor]
-    G4 --> G5[G5: Retraction & Injection Integrity]
-    G5 --> G6[G6: Shannon Entropy S < 2.08 & ZK Audit]
+    Q[Vstupní / Výstupní Data] --> G1[G1: ISO/IEC 42001 Epistemická Sanitizace & Anti-Injection]
+    G1 --> G2[G2: EU AI Act Art. 5 Rizika & Sémantická Hustota]
+    G2 --> G3[G3: NIS2 Art. 21 & CSR Kauzální Cesta]
+    G3 --> G4[G4: NIST SP 800-207 Zero-Trust & PII Redakce]
+    G4 --> G5[G5: AKGE-8D Konečnost NaN/Inf & Invariant σ]
+    G5 --> G6[G6: L2 Vektorová Integrita & Shannon Entropy S < 2.08]
     G6 -->|SCHVÁLENO| MAT[8D Matice Dopadů & Odpověď]
     G6 -->|SELHÁNÍ BRÁNY| EXC[GatekeeperChainException & Audit Log]
 ```
 
-Každá ze 6 bran povinně zapisuje svou operaci do auditního systému (`AuditLogger` / `zk_audit_ledger` se zřetězeným SHA-256 otiskem) a při jakémkoli selhání (např. `NaN`, `Inf`, nulový vektor, injection nebo překročení entropie) okamžitě přeruší řetězec vyhozením definované výjimky **`GatekeeperChainException`**:
+Každá ze 6 bran povinně zapisuje svou operaci do auditního systému (`TelemetryEngine` / `omnis.gatekeeper.audit` se zřetězeným SHA-256 otiskem) a při jakémkoli selhání (např. `NaN`, `Inf`, nulový vektor, injection nebo překročení entropie) okamžitě přeruší řetězec vyhozením definované výjimky **`GatekeeperChainException`**:
 
-1. **G1 (Entry Point Resolution & Input Sanitization)**: Identifikace uzlů v 8D ontologii a normalizace textu/payloadu.
-2. **G2 (Concept Coupling & Range Clamp)**: Provázání minimálně 2 konceptů a validace doménových hranic.
-3. **G3 (Causal Graph Path & Finite Tensor Guard)**: Ověření souvislé kauzální cesty v Apache AGE (`omnis_causal_graph`) / CSR grafu přes Judea Pearl Do-Calculus $P(Y \mid do(X=x))$ a zamítnutí `NaN`/`Inf`.
-4. **G4 (Quotable Evidence & Non-Zero Vector Guard)**: Důkazní ukotvení vůči normativním standardům (ISO/IEC 42001, NIST SP 800-207, EU AI Act, NIS2) a blokace prázdných / nulových 8D a 64D vektorů.
-5. **G5 (Retraction & Integrity)**: Ochrana proti prompt injection a kontrola proti tabulce `retraction_watch_blacklist`.
-6. **G6 (Entailment & Shannon Entropy)**: Striktní logická dedukce a výpočet informační entropie $S = -\sum p_i \ln p_i < 2.08$.
+1. **G1 (ISO/IEC 42001 Sec. 8.2 — Epistemická sanitizace & Anti-Injection)**: Odstranění řídicích znaků, kontrola minimální délky (`>= 3`) a blokace prompt injection / úniku direktiv (`<scratchpad>`).
+2. **G2 (EU AI Act 2024/1689 Art. 5 — Klasifikace rizik & sémantická hustota)**: Blokace zakázaných AI praktik (`social scoring`, podprahová manipulace) a kontrola minimální sémantické hustoty (`>= 2` tokeny).
+3. **G3 (Směrnice NIS2 Art. 21 & CSR Kauzalita)**: Blokace kybernetických útočných vektorů (ransomware, malware, DDoS) a ověření souvislé kauzální cesty `SYS -> LAW` v CSR / Apache AGE grafu.
+4. **G4 (ISO/IEC 42001 & NIST SP 800-207 — Zero-Trust & PII Redakce)**: Ochrana proti obcházení Zero-Trust politiky a automatická maskace e-mailů (`[REDACTED_PII]`) i API klíčů (`[REDACTED_KEY]`).
+5. **G5 (AKGE-8D — Konečnost tenzorů & Invariant $\sigma$)**: Odmítnutí `NaN`/`Inf` hodnot v 8D doménách i neplatného systémového pnutí $\sigma \notin [0.0, 0.85)$ a normalizace 8D vah do intervalu `[0, 1]`.
+6. **G6 (AKGE-8D — L2 vektorová integrita & Shannonova entropie $S < 2.08$)**: Zablokování prázdných, `NaN`/`Inf` či nulových embedding vektorů, L2 normalizace a ověření bifurkačního prahu Shannonovy entropie $S = -\sum p_i \ln p_i < 2.08$.
 
 ---
 

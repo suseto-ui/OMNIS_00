@@ -44,17 +44,17 @@ object CloudSqlSyncManager {
     }
 
     /**
-     * Ověří síťové a databázové spojení s Cloud SQL PostgreSQL instancí.
+     * Ověří síťové a databázové spojení s PostgreSQL 17 instancí.
      */
     suspend fun testConnection(): Pair<Boolean, String> = withContext(com.example.api.OmnisGeminiClient.ioDispatcher) {
         if (DatabaseConfig.isTesting) {
             _syncStatus.value = SyncStatus.Success(0, System.currentTimeMillis())
-            return@withContext Pair(true, "Testovací sandbox: Emulace Cloud SQL aktivní.")
+            return@withContext Pair(true, "Testovací sandbox: Emulace PostgreSQL 17 aktivní.")
         }
         _syncStatus.value = SyncStatus.Connecting
         val conn = getConnection()
         if (conn == null) {
-            val reason = "Nelze navázat spojení se serverem Cloud SQL (${DatabaseConfig.host}:${DatabaseConfig.port}). Zkontrolujte síť a přístupové údaje."
+            val reason = "Přímé JDBC spojení na PostgreSQL 17 (${DatabaseConfig.host}:${DatabaseConfig.port}) není nakonfigurováno; primární přenos běží přes REST Outbox Gateway."
             _syncStatus.value = SyncStatus.Offline(reason, 0)
             return@withContext Pair(false, reason)
         }
@@ -68,7 +68,7 @@ object CloudSqlSyncManager {
             rs.close()
             stmt.close()
             _syncStatus.value = SyncStatus.Success(0, System.currentTimeMillis())
-            Pair(ok, "Spojení s Cloud SQL (${DatabaseConfig.host}) úspěšně navázáno a ověřeno.")
+            Pair(ok, "Spojení s PostgreSQL 17 (${DatabaseConfig.host}) úspěšně navázáno a ověřeno.")
         } catch (e: Exception) {
             val msg = "Chyba ověření dotazu: ${e.message}"
             _syncStatus.value = SyncStatus.Offline(msg, 0)
@@ -122,10 +122,10 @@ object CloudSqlSyncManager {
                 // Table already has columns or engine is in strict mode
             }
 
-            Log.i(TAG, "Google Cloud SQL database tables initialized successfully.")
+            Log.i(TAG, "PostgreSQL 17 database tables initialized successfully.")
             stmt.close()
         } catch (e: Exception) {
-            Log.w(TAG, "Error initializing Cloud SQL tables (Offline local Room storage is active): ${e.message}")
+            Log.w(TAG, "Error initializing PostgreSQL 17 tables (Offline local Room storage is active): ${e.message}")
         } finally {
             try {
                 conn.close()
@@ -136,7 +136,7 @@ object CloudSqlSyncManager {
     }
 
     /**
-     * Dávková synchronizace všech neodbavených zpráv z Room do Cloud SQL (PostgreSQL).
+     * Dávková synchronizace všech neodbavených zpráv z Room do PostgreSQL 17.
      */
     suspend fun syncPendingRecords(dao: OmnisDao): Result<Int> = withContext(com.example.api.OmnisGeminiClient.ioDispatcher) {
         if (DatabaseConfig.isTesting) {
@@ -163,7 +163,7 @@ object CloudSqlSyncManager {
         _syncStatus.value = SyncStatus.Syncing(unsynced.size)
         val conn = getConnection()
         if (conn == null) {
-            val reason = "Cloud SQL nedostupný. Data bezpečně uložena v lokální paměti (Room DB)."
+            val reason = "Přímé PostgreSQL JDBC spojení nedostupné; data bezpečně uložena v Room Outboxu."
             _syncStatus.value = SyncStatus.Offline(reason, unsynced.size)
             return@withContext Result.failure(IllegalStateException(reason))
         }
@@ -234,10 +234,10 @@ object CloudSqlSyncManager {
             dao.markRecordsAsSynced(syncedIds)
 
             _syncStatus.value = SyncStatus.Success(syncedIds.size, System.currentTimeMillis())
-            Log.i(TAG, "Úspěšně dávkově synchronizováno ${syncedIds.size} záznamů do Google Cloud SQL.")
+            Log.i(TAG, "Úspěšně dávkově synchronizováno ${syncedIds.size} záznamů do PostgreSQL 17.")
             Result.success(syncedIds.size)
         } catch (e: Exception) {
-            val errorMsg = "Chyba dávkové synchronizace do Cloud SQL: ${e.message}"
+            val errorMsg = "Chyba dávkové synchronizace do PostgreSQL 17: ${e.message}"
             Log.w(TAG, errorMsg, e)
             _syncStatus.value = SyncStatus.Offline(errorMsg, unsynced.size)
             Result.failure(e)

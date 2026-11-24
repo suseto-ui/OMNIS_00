@@ -36,11 +36,8 @@ class OmnisSettings(BaseSettings):
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     GEMINI_API_KEYS: str = os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", ""))
     AUDIT_HMAC_KEY: str = os.getenv("AUDIT_HMAC_KEY", "")
-    FIREBASE_PROJECT_ID: str = os.getenv("FIREBASE_PROJECT_ID", "gen-lang-client-0328950802")
-    FIRESTORE_DATABASE_ID: str = os.getenv(
-        "FIRESTORE_DATABASE_ID",
-        "ai-studio-android-omnis-fba4ba28-3ec2-4eaf-a1a7-338554af8dfe",
-    )
+    FIREBASE_PROJECT_ID: str = os.getenv("FIREBASE_PROJECT_ID", "")
+    FIRESTORE_DATABASE_ID: str = os.getenv("FIRESTORE_DATABASE_ID", "")
     REQUIRE_APP_CHECK: bool = os.getenv("REQUIRE_APP_CHECK", "false").lower() in ("1", "true", "yes")
     OMNIS_SYNC_API_KEY: str = os.getenv("OMNIS_SYNC_API_KEY", "")
     ENABLE_CLOUD_KMS: bool = os.getenv("ENABLE_CLOUD_KMS", "false").lower() in ("1", "true", "yes")
@@ -55,8 +52,8 @@ class OmnisSettings(BaseSettings):
     ELECTRIC_URL: str = os.getenv("ELECTRIC_URL", "http://electric:3000")
     AGE_GRAPH_NAME: str = os.getenv("AGE_GRAPH_NAME", "omnis_causal_graph")
     LLM_PROVIDER_MODE: str = os.getenv("LLM_PROVIDER_MODE", "gemma4_local")
-    GEMMA4_API_BASE_URL: str = os.getenv("GEMMA4_API_BASE_URL", "http://localhost:8001/v1")
-    GEMMA4_MODEL_NAME: str = os.getenv("GEMMA4_MODEL_NAME", "google/gemma-4-27b-it")
+    GEMMA4_API_BASE_URL: str = os.getenv("GEMMA4_API_BASE_URL", "http://host.docker.internal:11434/v1")
+    GEMMA4_MODEL_NAME: str = os.getenv("GEMMA4_MODEL_NAME", "gemma4:e4b")
 
     @property
     def is_production(self) -> bool:
@@ -80,9 +77,12 @@ class OmnisSettings(BaseSettings):
             missing.append("AUDIT_HMAC_KEY")
         if _is_missing_or_placeholder(self.OMNIS_SYNC_API_KEY):
             missing.append("OMNIS_SYNC_API_KEY")
-        has_firestore = not _is_missing_or_placeholder(self.FIRESTORE_DATABASE_ID)
         has_sql = not _is_missing_or_placeholder(self.DATABASE_URL)
-        if not has_firestore and not has_sql:
+        has_firestore = not _is_missing_or_placeholder(self.FIRESTORE_DATABASE_ID)
+        if self.USE_OSS_POSTGRES_SYNC:
+            if not has_sql:
+                missing.append("DATABASE_URL")
+        elif not has_firestore and not has_sql:
             missing.append("DATABASE_URL or FIRESTORE_DATABASE_ID")
         if missing:
             raise RuntimeError(
@@ -98,11 +98,8 @@ def get_settings() -> OmnisSettings:
         DATABASE_URL=os.getenv("DATABASE_URL", ""),
         GEMINI_API_KEYS=os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", "")),
         AUDIT_HMAC_KEY=os.getenv("AUDIT_HMAC_KEY", ""),
-        FIREBASE_PROJECT_ID=os.getenv("FIREBASE_PROJECT_ID", "gen-lang-client-0328950802"),
-        FIRESTORE_DATABASE_ID=os.getenv(
-            "FIRESTORE_DATABASE_ID",
-            "ai-studio-android-omnis-fba4ba28-3ec2-4eaf-a1a7-338554af8dfe",
-        ),
+        FIREBASE_PROJECT_ID=os.getenv("FIREBASE_PROJECT_ID", ""),
+        FIRESTORE_DATABASE_ID=os.getenv("FIRESTORE_DATABASE_ID", ""),
         REQUIRE_APP_CHECK=os.getenv("REQUIRE_APP_CHECK", "false").lower() in ("1", "true", "yes"),
         OMNIS_SYNC_API_KEY=os.getenv("OMNIS_SYNC_API_KEY", ""),
         ENABLE_CLOUD_KMS=os.getenv("ENABLE_CLOUD_KMS", "false").lower() in ("1", "true", "yes"),
@@ -114,8 +111,8 @@ def get_settings() -> OmnisSettings:
         ELECTRIC_URL=os.getenv("ELECTRIC_URL", "http://electric:3000"),
         AGE_GRAPH_NAME=os.getenv("AGE_GRAPH_NAME", "omnis_causal_graph"),
         LLM_PROVIDER_MODE=os.getenv("LLM_PROVIDER_MODE", "gemma4_local"),
-        GEMMA4_API_BASE_URL=os.getenv("GEMMA4_API_BASE_URL", "http://localhost:8001/v1"),
-        GEMMA4_MODEL_NAME=os.getenv("GEMMA4_MODEL_NAME", "google/gemma-4-27b-it"),
+        GEMMA4_API_BASE_URL=os.getenv("GEMMA4_API_BASE_URL", "http://host.docker.internal:11434/v1"),
+        GEMMA4_MODEL_NAME=os.getenv("GEMMA4_MODEL_NAME", "gemma4:e4b"),
     )
     settings.validate_production_secrets()
     return settings

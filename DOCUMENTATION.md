@@ -52,12 +52,12 @@ Architektura rozhraní O.M.N.I.S. je řízena dvěma **ortogonálními (na sobě
 
 ```mermaid
 flowchart TD
-    INPUT[Vstupní Prompt / Výstup před 8D Maticí] --> G1[G1: Entry Point & Typová Sanitizace]
-    G1 -->|AUDIT + OK| G2[G2: Concept Coupling Min 2 Koncepty]
-    G2 -->|AUDIT + OK| G3[G3: Causal Path Do-Calculus & NaN/Inf Guard]
-    G3 -->|AUDIT + OK| G4[G4: Quotable Evidence & Nenulový Vektor]
-    G4 -->|AUDIT + OK| G5[G5: Retraction Blacklist & Injection Integrity]
-    G5 -->|AUDIT + OK| G6[G6: Shannon Entropy S < 2.08 & ZK Hash]
+    INPUT[Vstupní Prompt / Výstup před 8D Maticí] --> G1[G1: ISO/IEC 42001 Sanitizace & Anti-Injection]
+    G1 -->|AUDIT + OK| G2[G2: EU AI Act Art. 5 & Hustota Tokenů]
+    G2 -->|AUDIT + OK| G3[G3: NIS2 Art. 21 & CSR Kauzalita]
+    G3 -->|AUDIT + OK| G4[G4: NIST SP 800-207 Zero-Trust & PII Redakce]
+    G4 -->|AUDIT + OK| G5[G5: AKGE-8D Konečnost NaN/Inf & Invariant σ]
+    G5 -->|AUDIT + OK| G6[G6: L2 Vektorová Integrita & Shannon S < 2.08]
 
     G1 -->|FAIL| EXC[GatekeeperChainException & Audit Stopa]
     G2 -->|FAIL| EXC
@@ -80,7 +80,7 @@ flowchart TD
    - **`Apache AGE`**: Perzistentní graf `omnis_causal_graph` synchronizovaný s `public.causal_nodes` a `public.causal_edges`. `AgeCausalGraphRepository` kompiluje neměnné `CsrGraphSnapshot` a při `LISTEN omnis_graph_invalidated` provádí lock-free atomickou výměnu reference.
    - **`pgcrypto` & `zk_audit_ledger`**: Striktě append-only auditní řetězec s transakční serializací (`pg_advisory_xact_lock`) a blokací `UPDATE`, `DELETE` i `TRUNCATE` pomocí databázových triggerů.
    - **`ElectricSQL 1.8.1`**: Logická replikace nad publikací `electric_publication_default` pro tabulky `messages`, `goals`, `rag_fragments` a `tensor_states_8d` (`REPLICA IDENTITY FULL`) s ochranným limitem `max_slot_wal_keep_size=2GB`.
-3. **Ochrana Brány G5 (`retraction_watch_blacklist`):**
+3. **Ochrana integrity citací (`retraction_watch_blacklist`):**
    - Funkce `verify_retraction_watch()` v `backend/app/db_engine.py` ověřuje dotazy proti tabulce `public.retraction_watch_blacklist`.
 
 ### 2.2 Inferenční Kaskáda, Circuit Breaker & Release Provenance

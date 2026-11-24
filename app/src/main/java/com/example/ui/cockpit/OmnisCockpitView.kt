@@ -77,6 +77,13 @@ fun OmnisCockpitView(
     val lastRefusalVerdict by com.example.gateway.PromptGateway.lastVerdict.collectAsStateWithLifecycle()
     val currentRole by com.example.auth.OmnisAuthService.currentUserRole.collectAsStateWithLifecycle()
 
+    val telemetryEvents by com.example.telemetry.TelemetryEngine.events.collectAsStateWithLifecycle()
+    val gatewayStatus by com.example.data.sync.OmnisApiGatewayClient.gatewayStatus.collectAsStateWithLifecycle()
+    val isAdmin = currentRole == com.example.auth.UserRole.ADMIN_OPERATOR
+    val matrixTargetTab = if (isAdmin) OmnisTab.MATRIX else OmnisTab.ANALYTICS
+    val telemetryTargetTab = if (isAdmin) OmnisTab.TELEMETRY else OmnisTab.TENSOR_OVERSIGHT
+    val auditTargetTab = if (isAdmin) OmnisTab.TELEMETRY else OmnisTab.ANALYTICS
+
     val lowestDim = remember(latestRecord, kernelSnapshot.domainWeights) {
         val vector = latestRecord?.to8DVector() ?: kernelSnapshot.domainWeights
         val list = listOf(
@@ -109,7 +116,7 @@ fun OmnisCockpitView(
         ) {
             Column {
                 Text(
-                    "O.M.N.I.S. COCKPIT",
+                    "OMNIS by Suseto",
                     color = Color.White,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -202,7 +209,7 @@ fun OmnisCockpitView(
         Spacer(modifier = Modifier.height(14.dp))
 
         // Quick Action Command Strip
-        QuickActionStrip(onTabSwitch = onTabSwitch)
+        QuickActionStrip(userRole = currentRole, onTabSwitch = onTabSwitch)
 
         Spacer(modifier = Modifier.height(14.dp))
 
@@ -449,12 +456,12 @@ fun OmnisCockpitView(
         // 8D Matrix State Bar
         SectionHeader("8D TRANSDISCIPLINÁRNÍ MATICE", Icons.Default.Grid4x4) { 
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onTabSwitch(OmnisTab.MATRIX) 
+            onTabSwitch(matrixTargetTab) 
         }
         Spacer(modifier = Modifier.height(8.dp))
         Matrix8DOverviewCard(latestRecord = latestRecord, onClick = {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onTabSwitch(OmnisTab.MATRIX)
+            onTabSwitch(matrixTargetTab)
         })
 
         Spacer(modifier = Modifier.height(18.dp))
@@ -476,7 +483,7 @@ fun OmnisCockpitView(
         // AKGE-8D Tensor Graph Kernel Card
         SectionHeader("AKGE-8D TENZOROVÝ GRAFOVÝ KERNEL", Icons.Default.Hub) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onTabSwitch(OmnisTab.MATRIX)
+            onTabSwitch(matrixTargetTab)
         }
         AkgeKernelStatusCard()
 
@@ -560,162 +567,200 @@ fun OmnisCockpitView(
         Spacer(modifier = Modifier.height(18.dp))
 
         // Telemetry Preview
-        SectionHeader("SYSTEM TELEMETRY", Icons.Default.Dns) { 
+        SectionHeader("SYSTEM TELEMETRY", Icons.Default.Dns) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onTabSwitch(OmnisTab.TELEMETRY) 
+            onTabSwitch(telemetryTargetTab)
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onTabSwitch(OmnisTab.TELEMETRY)
-                },
-            color = OmnisCardDark,
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, OmnisBorderDark)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("STATUS", color = OmnisTextMuted, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text("NOMINAL", color = OmnisEmerald, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
-                }
-                Box(modifier = Modifier.width(1.dp).height(24.dp).background(OmnisBorderDark))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("LATENCE", color = OmnisTextMuted, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text("28 ms", color = OmnisCyan, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
-                }
-                Box(modifier = Modifier.width(1.dp).height(24.dp).background(OmnisBorderDark))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PAMĚŤ KROKŮ", color = OmnisTextMuted, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text("BM25 HYBRID", color = OmnisViolet, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
-                }
+        CockpitTelemetryPreviewCard(
+            gatewayStatus = gatewayStatus,
+            telemetryCount = telemetryEvents.size,
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onTabSwitch(telemetryTargetTab)
             }
-        }
+        )
 
         Spacer(modifier = Modifier.height(18.dp))
 
         // NIS2 HMAC-SHA256 Hash-Chain Regulatory Compliance Card
         SectionHeader("NIS2 KRYPTOGRAFICKÝ AUDIT", Icons.Default.VerifiedUser) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onTabSwitch(OmnisTab.TELEMETRY)
+            onTabSwitch(auditTargetTab)
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onTabSwitch(OmnisTab.TELEMETRY)
-                }
-                .testTag("cockpit_nis2_audit_card"),
-            color = OmnisCardDark,
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, OmnisCyan.copy(alpha = 0.35f))
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = OmnisCyan,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Column {
-                            Text(
-                                "STATUTÁRNÍ SHODA NIS2 & ZoKB",
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                "Čl. 20 (Osobní odpovědnost) & Čl. 21 (10 pilířů)",
-                                color = OmnisTextMuted,
-                                fontSize = 8.5.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = OmnisEmerald.copy(alpha = 0.2f),
-                        border = BorderStroke(0.5.dp, OmnisEmerald)
-                    ) {
-                        Text(
-                            text = "94% COMPLIANT",
-                            color = OmnisEmerald,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "HMAC-SHA256 auditní certifikace aktivní. Nulové riziko personální diskvalifikace vedení.",
-                        color = OmnisEmerald,
-                        fontSize = 9.5.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onTabSwitch(OmnisTab.TELEMETRY)
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(0.5.dp, OmnisCyan),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                        modifier = Modifier.height(26.dp)
-                    ) {
-                        Text("Otevřít Audit", color = OmnisCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
+        CockpitNis2ComplianceCard(
+            healthScore = healthScore,
+            refusalVerdict = refusalVerdict,
+            onOpenAudit = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onTabSwitch(auditTargetTab)
             }
-        }
-        
+        )
+
         Spacer(modifier = Modifier.height(90.dp)) // Nav bar padding
     }
 }
 
 @Composable
-fun QuickActionStrip(onTabSwitch: (OmnisTab) -> Unit) {
+private fun CockpitTelemetryPreviewCard(
+    gatewayStatus: com.example.data.sync.OmnisApiGatewayClient.GatewayStatus,
+    telemetryCount: Int,
+    onClick: () -> Unit
+) {
+    val (statusText, statusColor, latencyText) = when (gatewayStatus) {
+        is com.example.data.sync.OmnisApiGatewayClient.GatewayStatus.Connected ->
+            Triple("ONLINE", OmnisEmerald, "${gatewayStatus.latencyMs} ms")
+        is com.example.data.sync.OmnisApiGatewayClient.GatewayStatus.Synchronizing ->
+            Triple("SYNCING", OmnisCyan, "SYNC...")
+        is com.example.data.sync.OmnisApiGatewayClient.GatewayStatus.FallbackMode ->
+            Triple("OFFLINE", OmnisAmber, "OUTBOX")
+        com.example.data.sync.OmnisApiGatewayClient.GatewayStatus.Standby ->
+            Triple("LOCAL", OmnisCyan, "ROOM v19")
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        color = OmnisCardDark,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, OmnisBorderDark)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("PG17 / SYNC", color = OmnisTextMuted, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(statusText, color = statusColor, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+            }
+            Box(modifier = Modifier.width(1.dp).height(24.dp).background(OmnisBorderDark))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("LATENCE", color = OmnisTextMuted, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(latencyText, color = OmnisCyan, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+            }
+            Box(modifier = Modifier.width(1.dp).height(24.dp).background(OmnisBorderDark))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("UDÁLOSTI", color = OmnisTextMuted, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text("$telemetryCount LOGŮ", color = OmnisViolet, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CockpitNis2ComplianceCard(
+    healthScore: Float,
+    refusalVerdict: com.example.gateway.RefusalLadderVerdict?,
+    onOpenAudit: () -> Unit
+) {
+    val isApproved = refusalVerdict?.isApproved ?: true
+    val badgeColor = if (isApproved) OmnisEmerald else OmnisAmber
+    val badgeText = if (isApproved) {
+        "${(healthScore * 100).toInt()}% SHODA"
+    } else {
+        "VETO (${refusalVerdict?.refusingGate?.gateId?.code ?: "GATE"})"
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onOpenAudit)
+            .testTag("cockpit_nis2_audit_card"),
+        color = OmnisCardDark,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, OmnisCyan.copy(alpha = 0.35f))
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Shield, contentDescription = null, tint = OmnisCyan, modifier = Modifier.size(18.dp))
+                    Column {
+                        Text(
+                            "STATUTÁRNÍ SHODA NIS2 & ZoKB",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            "Gatekeeper G1–G6 & HMAC-SHA256 Audit",
+                            color = OmnisTextMuted,
+                            fontSize = 8.5.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = badgeColor.copy(alpha = 0.2f),
+                    border = BorderStroke(0.5.dp, badgeColor)
+                ) {
+                    Text(
+                        text = badgeText,
+                        color = badgeColor,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "HMAC-SHA256 auditní řetězec aktivní. Data šifrována v Room v19 SQLCipher.",
+                    color = OmnisEmerald,
+                    fontSize = 9.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedButton(
+                    onClick = onOpenAudit,
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(0.5.dp, OmnisCyan),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(26.dp)
+                ) {
+                    Text("Otevřít Audit", color = OmnisCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun QuickActionStrip(
+    userRole: com.example.auth.UserRole = com.example.auth.UserRole.STANDARD_USER,
+    onTabSwitch: (OmnisTab) -> Unit
+) {
     val haptic = LocalHapticFeedback.current
+    val isAdmin = userRole == com.example.auth.UserRole.ADMIN_OPERATOR
     val actions = listOf(
         Triple("Chat", Icons.AutoMirrored.Filled.Chat, OmnisTab.CHAT),
         Triple("Tenzorový Dohled", Icons.Default.Autorenew, OmnisTab.TENSOR_OVERSIGHT),
-        Triple("Matice", Icons.Default.Grid4x4, OmnisTab.MATRIX),
+        if (isAdmin) Triple("Matice", Icons.Default.Grid4x4, OmnisTab.MATRIX) else Triple("Analytika", Icons.Default.Analytics, OmnisTab.ANALYTICS),
         Triple("Aréna", Icons.AutoMirrored.Filled.CompareArrows, OmnisTab.DIALECTICS),
+        Triple("Debata", Icons.Default.Groups, OmnisTab.MULTI_AGENT_DEBATE),
         Triple("Scénáře", Icons.Default.Timeline, OmnisTab.SCENARIOS),
         Triple("Cíle", Icons.Default.Flag, OmnisTab.GOALS),
         Triple("Nexus", Icons.Default.Hub, OmnisTab.NEXUS),
         Triple("Artefakty", Icons.Default.Code, OmnisTab.ARTIFACTS),
-        Triple("Telemetrie", Icons.Default.Dns, OmnisTab.TELEMETRY)
+        if (isAdmin) Triple("Telemetrie", Icons.Default.Dns, OmnisTab.TELEMETRY) else Triple("Reputace", Icons.Default.EmojiEvents, OmnisTab.REPUTATION)
     )
 
     Row(

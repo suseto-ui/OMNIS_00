@@ -223,12 +223,43 @@ def test_q_omnis_sanitizer_and_production_config_guard():
     assert "IGNORE_INSTRUCTIONS" in res.detected_injections
     assert "jan.novak@example.com" not in res.sanitized_text
 
-    # Firestore-primary production config without Cloud SQL DATABASE_URL must succeed
-    firestore_primary_valid = OmnisSettings(
+    # Non-GCP Sovereign PostgreSQL 17 production config
+    postgres_oss_valid = OmnisSettings(
         ENV="production",
+        USE_OSS_POSTGRES_SYNC=True,
+        SECRET_KEY="prod-super-strong-jwt-key-value-32chars",
+        DATABASE_URL="postgresql+asyncpg://omnis_app_rw:secret@db:5432/omnis_db",
+        FIRESTORE_DATABASE_ID="",
+        AUDIT_HMAC_KEY="prod-super-strong-audit-hmac-key",
+        OMNIS_SYNC_API_KEY="prod-super-strong-sync-api-key",
+    )
+    postgres_oss_valid.validate_production_secrets()
+
+    # Non-GCP mode without DATABASE_URL must fail fast even if FIRESTORE_DATABASE_ID is set
+    postgres_missing_db = OmnisSettings(
+        ENV="production",
+        USE_OSS_POSTGRES_SYNC=True,
         SECRET_KEY="prod-super-strong-jwt-key-value-32chars",
         DATABASE_URL="",
-        FIRESTORE_DATABASE_ID="ai-studio-android-omnis-fba4ba28-3ec2-4eaf-a1a7-338554af8dfe",
+        FIRESTORE_DATABASE_ID="legacy-firestore-db",
+        AUDIT_HMAC_KEY="prod-super-strong-audit-hmac-key",
+        OMNIS_SYNC_API_KEY="prod-super-strong-sync-api-key",
+    )
+    pg_raised = False
+    try:
+        postgres_missing_db.validate_production_secrets()
+    except RuntimeError as exc:
+        pg_raised = True
+        assert "DATABASE_URL" in str(exc)
+    assert pg_raised is True
+
+    # Legacy Firestore-primary mode only allowed when USE_OSS_POSTGRES_SYNC=False
+    firestore_primary_valid = OmnisSettings(
+        ENV="production",
+        USE_OSS_POSTGRES_SYNC=False,
+        SECRET_KEY="prod-super-strong-jwt-key-value-32chars",
+        DATABASE_URL="",
+        FIRESTORE_DATABASE_ID="legacy-firestore-db",
         AUDIT_HMAC_KEY="prod-super-strong-audit-hmac-key",
         OMNIS_SYNC_API_KEY="prod-super-strong-sync-api-key",
     )

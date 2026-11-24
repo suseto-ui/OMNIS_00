@@ -1,6 +1,6 @@
 {
-  "name": "omnis",
-  "description": "O.M.N.I.S. - Kognitivní architektura a dashboard s Maticí dopadů",
+  "name": "OMNIS by Suseto",
+  "description": "OMNIS by Suseto — O.M.N.I.S. APEX v4.5.0-GA Kognitivní architektura s PostgreSQL 17, ElectricSQL a 8D Maticí dopadů",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

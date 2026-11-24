@@ -1,8 +1,8 @@
 """
-O.M.N.I.S. Sync Gateway Router
+OMNIS by Suseto — Sync Gateway Router
 Poskytuje zabezpečené REST API endpointy pro idempotentní synchronizaci zpráv,
 paměťových fragmentů, 8D telemetrie a Transactional Outbox dávek mezi Android klientem
-a PostgreSQL / pgvector v Cloud SQL.
+a PostgreSQL 17 (pgvector + Apache AGE + ElectricSQL 1.8.1) v Non-GCP architektuře.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import get_settings
 from backend.database import DATABASE_URL, get_db
 from backend.models import (
     OmnisSyncMemory,
@@ -294,44 +295,46 @@ async def sync_outbox_batch(
         except Exception:
             body = {}
 
-        if item.entity_type == "omnis_message":
+        if item.entity_type.strip().lower() == "omnis_message":
             msg = OmnisSyncMessage(
                 id=item.entity_id,
                 idempotency_key=item.idempotency_key,
                 role=str(body.get("role", "user")),
                 content=str(body.get("content", "")),
-                cognitive_process=str(body.get("cognitiveProcess", "")),
-                follow_up_questions=str(body.get("followUpQuestions", "")),
-                val_sys=float(body.get("valSys", 0.5)),
-                val_econ=float(body.get("valEcon", 0.5)),
-                val_psych=float(body.get("valPsych", 0.5)),
-                val_eco=float(body.get("valEco", 0.5)),
-                val_law=float(body.get("valLaw", 0.5)),
-                val_sec=float(body.get("valSec", 0.5)),
-                val_phys=float(body.get("valPhys", 0.5)),
-                val_soc=float(body.get("valSoc", 0.5)),
-                composite_score=float(body.get("compositeScore", 0.5)),
+                cognitive_process=str(body.get("cognitiveProcess") if "cognitiveProcess" in body else body.get("cognitive_process", "")),
+                follow_up_questions=str(body.get("followUpQuestions") if "followUpQuestions" in body else body.get("follow_up_questions", "")),
+                val_sys=float(body.get("valSys") if "valSys" in body else body.get("val_sys", 0.5)),
+                val_econ=float(body.get("valEcon") if "valEcon" in body else body.get("val_econ", 0.5)),
+                val_psych=float(body.get("valPsych") if "valPsych" in body else body.get("val_psych", 0.5)),
+                val_eco=float(body.get("valEco") if "valEco" in body else body.get("val_eco", 0.5)),
+                val_law=float(body.get("valLaw") if "valLaw" in body else body.get("val_law", 0.5)),
+                val_sec=float(body.get("valSec") if "valSec" in body else body.get("val_sec", 0.5)),
+                val_phys=float(body.get("valPhys") if "valPhys" in body else body.get("val_phys", 0.5)),
+                val_soc=float(body.get("valSoc") if "valSoc" in body else body.get("val_soc", 0.5)),
+                composite_score=float(body.get("compositeScore") if "compositeScore" in body else body.get("composite_score", 0.5)),
                 domain=str(body.get("domain", "SYSTEMS_INTELLIGENCE")),
-                attached_image_path=body.get("attachedImagePath"),
+                attached_image_path=body.get("attachedImagePath") if "attachedImagePath" in body else body.get("attached_image_path"),
                 timestamp=int(body.get("timestamp", item.created_at)),
-                defense_tier=str(body.get("defenseTier", "APPROVED")),
-                defense_notes=str(body.get("defenseNotes", "")),
+                defense_tier=str(body.get("defenseTier") if "defenseTier" in body else body.get("defense_tier", "APPROVED")),
+                defense_notes=str(body.get("defenseNotes") if "defenseNotes" in body else body.get("defense_notes", "")),
                 is_synced_to_postgres=True,
-                thread_id=str(body.get("threadId", item.session_id)),
-                thread_title=str(body.get("threadTitle", "Hlavní vlákno")),
-                user_name=str(body.get("userName", caller.uid)),
+                thread_id=str(body.get("threadId") if "threadId" in body else body.get("thread_id", item.session_id)),
+                thread_title=str(body.get("threadTitle") if "threadTitle" in body else body.get("thread_title", "Hlavní vlákno")),
+                user_name=str(body.get("userName") if "userName" in body else body.get("user_name", caller.uid)),
             )
             await db.merge(msg)
         synced += 1
 
     await db.commit()
     projected_count = 0
-    try:
-        from backend.security.firestore_store import project_outbox_items_to_firestore
+    settings = get_settings()
+    if not settings.USE_OSS_POSTGRES_SYNC and settings.ENABLE_FIRESTORE_CQRS_PROJECTION:
+        try:
+            from backend.security.firestore_store import project_outbox_items_to_firestore
 
-        projected_count = project_outbox_items_to_firestore(payload.items, caller.uid)
-    except Exception as fs_exc:
-        logger.warning("CQRS Firestore projection skipped: %s", fs_exc)
+            projected_count = project_outbox_items_to_firestore(payload.items, caller.uid)
+        except Exception as fs_exc:
+            logger.warning("CQRS Firestore projection skipped: %s", fs_exc)
 
     return SyncOutboxBatchResponse(
         status="SUCCESS",

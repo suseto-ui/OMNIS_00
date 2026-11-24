@@ -1,7 +1,8 @@
 """
-O.M.N.I.S. Cloud Firestore Primary Persistence & CQRS Projection Store.
-Slouží jako primární cloudové úložiště v scale-to-zero režimu bez Cloud SQL
-a jako cíl asynchronních CQRS projekcí z Transactional Outboxu (/api/v1/sync/batch).
+OMNIS by Suseto — Volitelný Firestore CQRS Projection & Process-Fallback Store.
+V Sovereign Non-GCP režimu (PostgreSQL 17 + ElectricSQL) je Firestore výchozím
+nastavením vypnutý (`ENABLE_FIRESTORE_CQRS_PROJECTION=false`) a lokální testování
+používá deterministický procesní fallback `_FALLBACK_COLLECTIONS`.
 """
 
 from __future__ import annotations
@@ -22,19 +23,22 @@ except ImportError:  # pragma: no cover
     firestore = None
 
 
+def _is_firestore_projection_enabled() -> bool:
+    return os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "false").strip().lower() in ("1", "true", "yes")
+
+
 def _get_database_id() -> str:
-    return os.getenv(
-        "FIRESTORE_DATABASE_ID",
-        "ai-studio-android-omnis-fba4ba28-3ec2-4eaf-a1a7-338554af8dfe",
-    ).strip()
+    return os.getenv("FIRESTORE_DATABASE_ID", "").strip()
 
 
 def _get_firestore_client() -> Optional[Any]:
-    if firestore is None:
+    if firestore is None or not _is_firestore_projection_enabled():
+        return None
+    db_id = _get_database_id()
+    if not db_id:
         return None
     try:
-        db_id = _get_database_id()
-        return firestore.Client(database=db_id) if db_id else firestore.Client()
+        return firestore.Client(database=db_id)
     except Exception as exc:
         logger.debug("Firestore client initialization skipped (%s); using process fallback.", exc)
         return None
@@ -133,11 +137,10 @@ def fs_find_one(collection: str, **filters: Any) -> Optional[Dict[str, Any]]:
 
 def project_outbox_items_to_firestore(items: List[Any], caller_uid: str) -> int:
     """
-    CQRS projekce přijatých Transactional Outbox položek do Cloud Firestore
-    (omnis_sessions, proof_of_necessity, sync_outbox_receipts).
-    Nikdy neblokuje ani neshazuje hlavní sync odpověď při lokálním testování bez GCP credentials.
+    Volitelná CQRS projekce přijatých Transactional Outbox položek do Cloud Firestore.
+    V Non-GCP režimu je výchozím nastavením vypnuta (`ENABLE_FIRESTORE_CQRS_PROJECTION=false`).
     """
-    if os.getenv("ENABLE_FIRESTORE_CQRS_PROJECTION", "true").strip().lower() not in ("1", "true", "yes"):
+    if not _is_firestore_projection_enabled():
         return 0
 
     projected = 0

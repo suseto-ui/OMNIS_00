@@ -151,12 +151,12 @@ fun AdminDrawerContent(
                 }
                 Column {
                     Text(
-                        text = "O.M.N.I.S.",
+                        text = "OMNIS by Suseto",
                         color = Color.White,
                         fontWeight = FontWeight.Black,
-                        fontSize = 17.sp,
+                        fontSize = 15.sp,
                         fontFamily = FontFamily.Monospace,
-                        letterSpacing = 1.sp
+                        letterSpacing = 0.5.sp
                     )
                     Text(
                         text = "ADMINISTRACE & SYSTÉM",
@@ -420,6 +420,14 @@ fun AdminDrawerContent(
             )
 
             AdminDrawerItem(
+                title = "Multi-Agentní Debata",
+                icon = Icons.Default.Groups,
+                selected = activeTab == OmnisTab.MULTI_AGENT_DEBATE,
+                tint = OmnisCyan,
+                onClick = { onTabSelected(OmnisTab.MULTI_AGENT_DEBATE) }
+            )
+
+            AdminDrawerItem(
                 title = "Octagon 8D Matice",
                 icon = Icons.Default.Grid4x4,
                 selected = activeTab == OmnisTab.MATRIX,
@@ -515,6 +523,14 @@ fun AdminDrawerContent(
                 selected = activeTab == OmnisTab.TELEMETRY,
                 tint = OmnisCyan,
                 onClick = { onTabSelected(OmnisTab.TELEMETRY) }
+            )
+
+            AdminDrawerItem(
+                title = "APEX Telemetrie",
+                icon = Icons.Default.Insights,
+                selected = activeTab == OmnisTab.APEX_DASHBOARD,
+                tint = OmnisCyan,
+                onClick = { onTabSelected(OmnisTab.APEX_DASHBOARD) }
             )
 
             AdminDrawerItem(

@@ -48,7 +48,7 @@ data class RemoteThreadSummary(
 
 /**
  * Centrální služba pro registraci, přihlášení a odhlášení uživatelů
- * s backendovou synchronizací přes FastAPI na Google Cloud Run a JWT.
+ * s backendovou synchronizací přes OMNIS by Suseto FastAPI (PostgreSQL 17) a JWT.
  */
 class UserAuthService {
     companion object {
@@ -283,7 +283,7 @@ class UserAuthService {
     }
 
     /**
-     * Získá seznam konverzačních vláken uložených v PostgreSQL na Cloud Runu.
+     * Získá seznam konverzačních vláken uložených v PostgreSQL 17 na backendu.
      */
     suspend fun getRemoteThreads(token: String): List<RemoteThreadSummary> = withContext(Dispatchers.IO) {
         try {
@@ -319,7 +319,7 @@ class UserAuthService {
     }
 
     /**
-     * Vytvoří nové konverzační vlákno v PostgreSQL na Cloud Runu.
+     * Vytvoří nové konverzační vlákno v PostgreSQL 17 na backendu.
      */
     suspend fun createRemoteThread(token: String, title: String, domain: String = "SYSTEMS_INTELLIGENCE"): String? = withContext(Dispatchers.IO) {
         try {

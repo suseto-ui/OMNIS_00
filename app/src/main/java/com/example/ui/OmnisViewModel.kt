@@ -63,9 +63,14 @@ class OmnisViewModel @JvmOverloads constructor(
 
     fun syncWithCloudRun() {
         viewModelScope.launch {
-            val pending = records.value
-            if (pending.isNotEmpty()) {
-                com.example.data.sync.OmnisApiGatewayClient.syncBatchToGateway(pending)
+            val (outboxSynced, _) = withContext(ioDispatcher) {
+                repository.flushOutboxNow()
+            }
+            if (outboxSynced == 0) {
+                val pending = records.value.filter { !it.isSyncedToPostgres }
+                if (pending.isNotEmpty()) {
+                    com.example.data.sync.OmnisApiGatewayClient.syncBatchToGateway(pending)
+                }
             }
             val session = com.example.auth.OmnisAuthService.currentSession.value
             if (session != null) {
@@ -73,8 +78,8 @@ class OmnisViewModel @JvmOverloads constructor(
                 if (remoteThreads.isNotEmpty()) {
                     telemetry.value = telemetry.value + OmnisTelemetry(
                         type = "INFO",
-                        component = "CloudSync",
-                        message = "Synchronizováno ${remoteThreads.size} vláken z Firestore cloudu."
+                        component = "Pg17Sync",
+                        message = "Synchronizováno ${remoteThreads.size} vláken ze serveru PostgreSQL 17."
                     )
                 }
             }
@@ -125,7 +130,15 @@ class OmnisViewModel @JvmOverloads constructor(
 
     fun setTab(tab: OmnisTab) {
         val role = com.example.auth.OmnisAuthService.currentUserRole.value
-        if (role == UserRole.STANDARD_USER && (tab == OmnisTab.NODES || tab == OmnisTab.MATRIX || tab == OmnisTab.ADMIN || tab == OmnisTab.DEV_PROMPT_LAB || tab == OmnisTab.TELEMETRY)) {
+        val isAdminOnlyTab = tab == OmnisTab.NODES ||
+            tab == OmnisTab.MATRIX ||
+            tab == OmnisTab.ADMIN ||
+            tab == OmnisTab.DEV_PROMPT_LAB ||
+            tab == OmnisTab.TELEMETRY ||
+            tab == OmnisTab.APEX_DASHBOARD ||
+            tab == OmnisTab.PRODUCTION_AUDIT ||
+            tab == OmnisTab.TEST_SEMANTIC
+        if (role == UserRole.STANDARD_USER && isAdminOnlyTab) {
             activeTab.value = OmnisTab.CHAT
         } else {
             activeTab.value = tab
@@ -455,7 +468,11 @@ class OmnisViewModel @JvmOverloads constructor(
                     message = outboxMsg
                 )
             }
-            CloudSqlSyncManager.syncPendingRecords(repository.omnisDao)
+            if (DatabaseConfig.isCloudSqlConfigured) {
+                CloudSqlSyncManager.syncPendingRecords(repository.omnisDao)
+            } else {
+                com.example.data.sync.OmnisApiGatewayClient.pingGateway()
+            }
         }
     }
 
@@ -471,7 +488,11 @@ class OmnisViewModel @JvmOverloads constructor(
 
     fun testCloudSqlConnection() {
         viewModelScope.launch {
-            CloudSqlSyncManager.testConnection()
+            if (DatabaseConfig.isCloudSqlConfigured) {
+                CloudSqlSyncManager.testConnection()
+            } else {
+                com.example.data.sync.OmnisApiGatewayClient.pingGateway()
+            }
         }
     }
 
@@ -501,8 +522,8 @@ class OmnisViewModel @JvmOverloads constructor(
             llmAnalysisResult.value = LlmErrorAnalysis(
                 component = telemetryItem.component,
                 message = telemetryItem.message,
-                analysisText = "Doporučeno obnovit připojení k backendu a resetovat vyrovnávací paměť.",
-                recommendedSteps = listOf("Spustit Self-Healing scan", "Zkontrolovat Cloud SQL", "Provést restart relace")
+                analysisText = "Doporučeno obnovit připojení k backendu PostgreSQL 17 a vyprázdnit Outbox frontu.",
+                recommendedSteps = listOf("Spustit Self-Healing scan", "Zkontrolovat PostgreSQL 17", "Provést restart relace")
             )
             isAnalyzingError.value = false
         }
@@ -776,22 +797,13 @@ class OmnisViewModel @JvmOverloads constructor(
                 repository.insert(userRecord)
             }
 
-            // Cloud Firestore Background Sync Integration (Bypassed in testing)
+            // Sovereign Non-GCP Outbox Sync Integration (Bypassed in testing)
             if (!com.example.data.DatabaseConfig.isTesting) {
                 viewModelScope.launch(ioDispatcher) {
-                    try {
-                        val cloudRepo = com.example.data.FirebaseFirestoreRepository.getInstance(getApplication())
-                        val cloudRecordId = "rec_" + System.currentTimeMillis()
-                        cloudRepo.saveRecord(
-                            id = cloudRecordId,
-                            query = textToSend,
-                            response = "Zpracovává se...",
-                            domain = focusedDomain.value,
-                            confidenceScore = 0.95
-                        )
-                    } catch (e: Exception) {
-                        android.util.Log.d("OmnisViewModel", "Cloud sync background error: ${e.message}")
-                    }
+                    runCatching { repository.flushOutboxNow() }
+                        .onFailure { e ->
+                            android.util.Log.d("OmnisViewModel", "PG17 Outbox sync deferred: ${e.message}")
+                        }
                 }
             }
 
@@ -934,6 +946,9 @@ class OmnisViewModel @JvmOverloads constructor(
             )
             withContext(ioDispatcher) {
                 repository.insert(asstRecord)
+                if (!com.example.data.DatabaseConfig.isTesting) {
+                    runCatching { repository.flushOutboxNow() }
+                }
             }
 
             // Automatické odemykání odznaků podle reálných kognitivních událostí
