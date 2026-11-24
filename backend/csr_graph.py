@@ -74,6 +74,63 @@ def normalize_l2_64d(vector: List[float]) -> List[float]:
     return [round(v / norm, 8) for v in cleaned]
 
 
+def detect_corrupt_tensor_inputs(
+    domain_scores: Optional[Dict[str, Any]] = None,
+    query_embedding: Optional[List[Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Detekuje poškozené externí vstupy (NaN, Inf, ne-čísla nebo nulový 64D vektor) před interní sanitizací,
+    aby brána G6 mohla požadavek explicitně zamítnout a zapsat neměnný auditní záznam.
+    """
+    non_finite_domains: List[str] = []
+    if isinstance(domain_scores, dict):
+        for key, raw_val in domain_scores.items():
+            try:
+                num = float(raw_val)
+            except (TypeError, ValueError):
+                non_finite_domains.append(str(key))
+                continue
+            if not math.isfinite(num):
+                non_finite_domains.append(str(key))
+
+    non_finite_embedding = False
+    zero_vector = False
+    if query_embedding is not None:
+        if len(query_embedding) == 0:
+            zero_vector = True
+        else:
+            norm_sq = 0.0
+            for elem in query_embedding:
+                try:
+                    num = float(elem)
+                except (TypeError, ValueError):
+                    non_finite_embedding = True
+                    continue
+                if not math.isfinite(num):
+                    non_finite_embedding = True
+                else:
+                    norm_sq += num * num
+            if not non_finite_embedding and norm_sq <= 1e-12:
+                zero_vector = True
+
+    has_corrupt = bool(non_finite_domains or non_finite_embedding or zero_vector)
+    reasons: List[str] = []
+    if non_finite_domains:
+        reasons.append(f"non-finite domain_scores ({', '.join(non_finite_domains)})")
+    if non_finite_embedding:
+        reasons.append("non-finite values in query_embedding")
+    if zero_vector:
+        reasons.append("zero-norm query_embedding")
+
+    return {
+        "has_corrupt_input": has_corrupt,
+        "non_finite_domains": non_finite_domains,
+        "non_finite_embedding": non_finite_embedding,
+        "zero_vector": zero_vector,
+        "reason": f"G6_NON_FINITE_OR_ZERO_VECTOR: {'; '.join(reasons)}" if reasons else None,
+    }
+
+
 class ProofOfNecessityLog(BaseModel):
     """
     Kryptograficky ověřitelný Důkaz nutnosti (Proof of Necessity - PoN).

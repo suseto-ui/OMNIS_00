@@ -98,22 +98,45 @@ class ChatViewModel(private val repository: OmnisRepository) : ViewModel() {
                     rawModelResponse = rawResponseText
                 )
 
+                // Dual-Gate Post-Generation Validace (G1–G6 na výstupu)
+                val outputVerdict = com.example.gateway.RefusalLadderEngine.evaluateOutput(
+                    query = textToSend,
+                    outputText = apexResult.finalArtifact,
+                    outputDomainScores = kernelState.domainWeights,
+                    currentSigma = kernelState.systemStressSigma
+                )
+
+                val verifiedContent = if (outputVerdict.isApproved) {
+                    apexResult.finalArtifact
+                } else {
+                    val gate = outputVerdict.refusingGate
+                    com.example.telemetry.TelemetryEngine.log(
+                        type = "SECURITY",
+                        component = "OUTPUT_REFUSAL_LADDER",
+                        message = "Výstup v ChatViewModel zablokován na bráně ${gate?.gateId?.code}: ${gate?.reason}"
+                    )
+                    "⛔ **EXPLICIT GROUNDED REFUSAL NA VÝSTUPU (${gate?.gateId?.code ?: "G1-G6"})**\n\n" +
+                        "${gate?.reason ?: "Vygenerovaný výstup neprošel post-generační verifikací."}\n\n" +
+                        "Norma: ${gate?.regulatoryNorm ?: "EU AI Act / NIS2 / AKGE-8D"}"
+                }
+
                 // Vyhodnocení kvality napříč 4 pilíři (Q_omnis)
                 val evalScore = com.example.engine.UnifiedResponseEvaluator.evaluateResponse(
                     query = textToSend,
-                    response = apexResult.finalArtifact
+                    response = verifiedContent
                 )
 
                 val assistantRecord = com.example.data.OmnisRecord(
                     role = "assistant",
-                    content = apexResult.finalArtifact,
+                    content = verifiedContent,
                     threadId = activeThreadId.value,
+                    defenseTier = if (outputVerdict.isApproved) "APPROVED" else "REFUSED_OUTPUT_${outputVerdict.refusingGate?.gateId?.code ?: "G6"}",
                     cognitiveProcess = "RAG context integrated. Cascade risk: ${cascadeRisk.isCascadeRiskActive}. Mode: ${cascadeRisk.tokenRebalancingMode}",
                     valSys = kernelState.domainWeights["SYS"] ?: 0.5f,
                     valSec = kernelState.domainWeights["SEC"] ?: 0.5f,
-                    topologicalDiagnostic = cascadeRisk.warningSummary,
-                    confidenceScore = apexResult.adversarialResilienceScore,
-                    reliabilityStatus = evalScore.qualityTier,
+                    topologicalDiagnostic = if (outputVerdict.isApproved) cascadeRisk.warningSummary else (outputVerdict.refusingGate?.reason ?: cascadeRisk.warningSummary),
+                    confidenceScore = if (outputVerdict.isApproved) apexResult.adversarialResilienceScore else 0.25f,
+                    reliabilityStatus = if (outputVerdict.isApproved) evalScore.qualityTier else "REFUSED",
                     hiddenScratchpad = apexResult.hiddenScratchpad.ifBlank { null },
                     qOmnisIndex = evalScore.unifiedQualityIndex,
                     qualityTier = evalScore.qualityTier
@@ -121,22 +144,39 @@ class ChatViewModel(private val repository: OmnisRepository) : ViewModel() {
                 repository.insert(assistantRecord)
             }.onFailure { error ->
                 // Ochranný jistič (Circuit Breaker) & Lokální Deterministický Fallback
+                com.example.telemetry.TelemetryEngine.log(
+                    type = "WARNING",
+                    component = "CIRCUIT_BREAKER",
+                    message = "ChatViewModel fallback aktivován: ${error.message ?: "Provider unreachable"}"
+                )
                 val localFallbackResult = com.example.engine.ApexOrchestratorEngine.executeMasterProtocol(
                     query = textToSend
                 )
+                val fallbackVerdict = com.example.gateway.RefusalLadderEngine.evaluateOutput(
+                    query = textToSend,
+                    outputText = localFallbackResult.finalArtifact,
+                    outputDomainScores = kernelState.domainWeights,
+                    currentSigma = kernelState.systemStressSigma
+                )
+                val verifiedFallback = if (fallbackVerdict.isApproved) {
+                    localFallbackResult.finalArtifact
+                } else {
+                    "⛔ **EXPLICIT GROUNDED REFUSAL NA VÝSTUPU (${fallbackVerdict.refusingGate?.gateId?.code ?: "G6"})**\n\n" +
+                        "${fallbackVerdict.refusingGate?.reason ?: "Výstup neprošel verifikací."}"
+                }
                 val fallbackEval = com.example.engine.UnifiedResponseEvaluator.evaluateResponse(
                     query = textToSend,
-                    response = localFallbackResult.finalArtifact
+                    response = verifiedFallback
                 )
 
                 val fallbackRecord = com.example.data.OmnisRecord(
                     role = "assistant",
-                    content = localFallbackResult.finalArtifact,
+                    content = verifiedFallback,
                     threadId = activeThreadId.value,
-                    defenseTier = "FALLBACK_RECOVERY",
+                    defenseTier = if (fallbackVerdict.isApproved) "FALLBACK_RECOVERY" else "REFUSED_OUTPUT_${fallbackVerdict.refusingGate?.gateId?.code ?: "G6"}",
                     topologicalDiagnostic = "Circuit Breaker aktivován (${error.message}). Spuštěna lokální deterministická simulace.",
-                    confidenceScore = 0.92f,
-                    reliabilityStatus = fallbackEval.qualityTier,
+                    confidenceScore = if (fallbackVerdict.isApproved) 0.92f else 0.25f,
+                    reliabilityStatus = if (fallbackVerdict.isApproved) fallbackEval.qualityTier else "REFUSED",
                     hiddenScratchpad = localFallbackResult.hiddenScratchpad.ifBlank { null },
                     qOmnisIndex = fallbackEval.unifiedQualityIndex,
                     qualityTier = fallbackEval.qualityTier

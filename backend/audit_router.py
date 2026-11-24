@@ -21,6 +21,7 @@ from backend.graph.csr_engine import (
     _sanitize_unit_float,
     compute_advanced_metrics,
     compute_q_omnis,
+    detect_corrupt_tensor_inputs,
     get_age_graph_repository,
 )
 from backend.models import User, ZkAuditLedgerEntry
@@ -216,6 +217,10 @@ async def evaluate_akge_8d(
     6-úrovňovým Refusal Ladderem (EU AI Act / NIS2 Passport), hybridním RRF vyhledáváním
     a deterministickým Cryptographic Audit Commitment řetězcem (včetně Executive Override).
     """
+    corrupt_check = detect_corrupt_tensor_inputs(
+        domain_scores=req.domain_scores,
+        query_embedding=req.query_embedding,
+    )
     scores = {
         d: _sanitize_unit_float(
             req.domain_scores.get(d, 0.85 if d in ("SYS", "SEC", "LAW") else 0.78),
@@ -245,14 +250,14 @@ async def evaluate_akge_8d(
 
     q_lower = req.query.lower()
     is_admin = getattr(current_user, "role", "STANDARD_USER") == "ADMIN_OPERATOR"
-    override_active = bool(req.modify_system_state and is_admin)
+    override_active = bool(req.modify_system_state and is_admin and not corrupt_check["has_corrupt_input"])
 
     g1_ok = len(req.query.strip()) >= 3
     g2_ok = len(req.query.strip().split()) >= 2
     g3_ok = bool(do_sys_law.get("g3_passed")) and bool(do_sys_law.get("shortest_causal_path"))
     g4_ok = not any(bad in q_lower for bad in ("ransomware", "malware", "bypass security", "social scoring"))
     g5_ok = "ignore previous" not in q_lower and "system override" not in q_lower
-    g6_ok = topo["shannon_entropy"] < 2.08
+    g6_ok = topo["shannon_entropy"] < 2.08 and not corrupt_check["has_corrupt_input"]
 
     if override_active and g4_ok is False:
         # Executive Override převádí regulatorní veto na varování a zapisuje OVERRIDE_ACTIVE
@@ -266,6 +271,7 @@ async def evaluate_akge_8d(
         g5_retraction_integrity=g5_ok,
         g6_entailment_entropy=g6_ok,
         shannon_entropy=topo["shannon_entropy"],
+        refusal_reason=corrupt_check["reason"],
     )
 
     sigma = round(sum(max(0.0, (0.5 - v) * 2.0) for v in scores.values()) / 8.0, 4)
@@ -277,10 +283,14 @@ async def evaluate_akge_8d(
         system_tension_sigma=sigma,
     )
 
-    tier = "OVERRIDE" if override_active else ("APPROVED" if gates.all_passed else "BLOCKED")
+    if corrupt_check["has_corrupt_input"]:
+        tier = "REFUSED_G6_BOUNDARY"
+    else:
+        tier = "OVERRIDE" if override_active else ("APPROVED" if gates.all_passed else "BLOCKED")
+    audit_r_systemic = 0.0 if corrupt_check["has_corrupt_input"] else matrix_state.harmonic_mean_hw
     zk = CryptographicAuditCommitment.generate(
         query=req.query,
-        r_systemic=matrix_state.harmonic_mean_hw,
+        r_systemic=audit_r_systemic,
         tier=tier,
         nonce=req.nonce,
         override_active=override_active,
@@ -291,11 +301,15 @@ async def evaluate_akge_8d(
             db,
             user_id=str(current_user.id),
             query=req.query,
-            r_systemic=matrix_state.harmonic_mean_hw,
+            r_systemic=audit_r_systemic,
             tier=tier,
             nonce=zk.nonce,
             override_active=override_active,
-            payload={"q_omnis": q_omnis, "g3_snapshot_version": do_sys_law.get("snapshot_version")},
+            payload={
+                "q_omnis": q_omnis,
+                "g3_snapshot_version": do_sys_law.get("snapshot_version"),
+                "corrupt_input_check": corrupt_check,
+            },
         )
     except Exception as ledger_exc:
         try:
@@ -304,13 +318,17 @@ async def evaluate_akge_8d(
             pass
         logger.warning("AKGE ledger append skipped: %s", ledger_exc)
 
-    rag_hits = await hybrid_search_knowledge(
-        query_text=req.query,
-        query_embedding=req.query_embedding,
-        limit=3,
-        rrf_k=60,
-        db=db,
-        user_id=str(current_user.id),
+    rag_hits = (
+        []
+        if corrupt_check["has_corrupt_input"]
+        else await hybrid_search_knowledge(
+            query_text=req.query,
+            query_embedding=req.query_embedding,
+            limit=3,
+            rrf_k=60,
+            db=db,
+            user_id=str(current_user.id),
+        )
     )
 
     if not is_admin:

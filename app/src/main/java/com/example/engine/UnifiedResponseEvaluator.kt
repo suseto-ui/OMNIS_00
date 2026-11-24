@@ -47,9 +47,14 @@ object UnifiedResponseEvaluator {
         val coherence = TensorCoherenceEvaluator.evaluateCoherence(query, response, matches)
         val tensorStab = sanitizeUnit(coherence.overallScore / 100f)
 
-        // 3. Win-Win-Win Impact Matrix (S_impact)
-        val impactResult = OmnisFivePhaseExecutor.evaluateImpactMatrix(query, emptyMap())
-        val impactScore = sanitizeUnit(impactResult.winWinWinScore)
+        // 3. Win-Win-Win Impact Matrix (S_impact) chráněná vrstvou Gatekeeper G1-G6
+        val gatekeeperOutcome = try {
+            val impact = OmnisFivePhaseExecutor.evaluateImpactMatrix(query, emptyMap())
+            impact.winWinWinScore to null
+        } catch (ex: com.example.gateway.GatekeeperChainException) {
+            0.0f to ex.gateId.code
+        }
+        val impactScore = sanitizeUnit(gatekeeperOutcome.first, default = 0.0f)
 
         // 4. Zero-Fluff Compliance (S_zero_fluff)
         val isZeroFluff = ApexOrchestratorEngine.isZeroFluffCompliant(response)
@@ -64,6 +69,7 @@ object UnifiedResponseEvaluator {
         )
 
         val tier = when {
+            gatekeeperOutcome.second != null -> "REFUSED_${gatekeeperOutcome.second}"
             unifiedIndex >= 0.90f -> "EXCELLENT"
             unifiedIndex >= 0.70f -> "OPTIMAL"
             unifiedIndex >= 0.45f -> "MODERATE"

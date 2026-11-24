@@ -38,15 +38,17 @@ echo "[Gate 3/5] Spouštím kompletní Android unit & Robolectric test suite..."
 
 # 4. Sestavení R8/ProGuard Release APK & AAB
 echo "[Gate 4/5] Sestavuji produkční Release APK & AAB (R8 Minification & ShrinkResources)..."
+SIGNING_STATUS="UNSIGNED_R8_ONLY"
 if [[ -n "${OMNIS_KEYSTORE_FILE:-}" && -f "${OMNIS_KEYSTORE_FILE:-}" ]]; then
+    SIGNING_STATUS="SIGNED"
     echo "INFO: Detekován produkční Android Keystore (${OMNIS_KEYSTORE_FILE}) — artefakty budou kryptograficky podepsány."
 else
-    echo "WARN: OMNIS_KEYSTORE_FILE není nastaven — sestavuji nepodepsaný R8 release build."
+    echo "WARN: OMNIS_KEYSTORE_FILE není nastaven — sestavuji nepodepsaný R8 release build (SIGNING_STATUS=${SIGNING_STATUS})."
 fi
 "$GRADLE_BIN" :app:assembleRelease :app:bundleRelease --no-daemon
 
 # 5. Shromáždění artefaktů a generování SHA-256 kontrolních součtů
-echo "[Gate 5/5] Generuji ${RELEASE_DIR}/SHA256SUMS.txt a RELEASE_NOTES.md..."
+echo "[Gate 5/5] Generuji ${RELEASE_DIR}/SIGNING_STATUS.txt, SHA256SUMS.txt a RELEASE_NOTES.md..."
 rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
 
@@ -58,6 +60,13 @@ if [[ -z "$(ls -A "$RELEASE_DIR")" ]]; then
     echo "ERROR: Nebyly nalezeny žádné vygenerované release APK/AAB artefakty." >&2
     exit 1
 fi
+
+cat > "${RELEASE_DIR}/SIGNING_STATUS.txt" <<EOF
+SIGNING_STATUS=${SIGNING_STATUS}
+R8_MINIFICATION=ENABLED
+BUILT_AT_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+KEYSTORE_PRESENT=$([[ "$SIGNING_STATUS" == "SIGNED" ]] && echo "true" || echo "false")
+EOF
 
 (
     cd "$RELEASE_DIR"

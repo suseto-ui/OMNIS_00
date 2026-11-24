@@ -9,11 +9,11 @@ Tento manuál obsahuje všechny kroky vyžadující lidskou interakci (registrac
 | Vrstva systému | Původní placená služba | Nová bezplatná alternativa ($0/měsíc) | Stav v kódu & odkaz |
 | :--- | :--- | :--- | :--- |
 | **Cloud Server & DB** | Google Cloud SQL + Cloud Run | **Oracle Cloud Always Free ARM Ampere A1** (2 OCPU, 12 GB RAM, 100–200 GB disk) + **PostgreSQL 17 (`pgvector` + `Apache AGE` + `pgcrypto`)** | **100% připraveno** (`docker-compose.yml` služba `db`) · [oracle.com/europe/cloud/free](https://www.oracle.com/europe/cloud/free/) |
-| **Realtime Sync** | Firebase Firestore | **ElectricSQL 1.8.1** (self-hosted nad PostgreSQL WAL) + **Room v18 SQLCipher AES-256** | **100% připraveno** (`omnis_electric` + `omnis_sync_outbox`) · [electric-sql.com](https://electric-sql.com/) |
+| **Realtime Sync** | Firebase Firestore | **ElectricSQL 1.8.1** (self-hosted nad PostgreSQL WAL) + **Room v19 SQLCipher AES-256** | **100% připraveno** (`omnis_electric` + `omnis_sync_outbox`) · [electric-sql.com](https://electric-sql.com/) |
 | **Doména & HTTPS** | Cloud Load Balancer / Managed SSL | **DuckDNS** (zdarma subdoména) + **Caddy 2** (automatický Let's Encrypt TLS přes HTTP-01/TLS-ALPN-01) | **100% připraveno** (`Caddyfile`) · [duckdns.org](https://www.duckdns.org/) |
 | **Serverová LLM Kaskáda** | Placené Gemini / Vertex AI | **Ollama (`gemma4:e4b`)** -> **GroqCloud Free Tier** -> **Google AI Studio Free Tier** -> **OpenRouter `:free`** | **100% připraveno** (`backend/app/llm_cascade.py`) · [aistudio.google.com](https://aistudio.google.com/) / [console.groq.com](https://console.groq.com/) / [openrouter.ai](https://openrouter.ai/) |
 | **Android Client Auth & URL** | Cloud Run URL & Firebase Auth | **Vlastní server přes `-POMNIS_BACKEND_URL`** + volitelně Google Sign-In (`CredentialManager`) nebo OMNIS JWT (`/api/auth/login`) | **Vyžaduje build parametr `-POMNIS_BACKEND_URL`** (`app/build.gradle.kts` výchozí fallback míří na `.run.app`) |
-| **CI/CD & Analýza** | Google Cloud Build + SonarQube Paid | **GitHub Actions** (`omnis-ci.yml`, `omnis-zero-cost-ci.yml`) + **SonarQube Cloud Free** | **100% připraveno** · [sonarcloud.io](https://sonarcloud.io/) |
+| **CI/CD & Analýza** | Google Cloud Build + SonarQube Paid | **GitHub Actions** (`production-ci-cd.yml`, `omnis-ci.yml`, `omnis-zero-cost-ci.yml`) + **SonarQube Cloud Free** | **100% připraveno** · [sonarcloud.io](https://sonarcloud.io/) |
 
 ---
 
@@ -254,14 +254,20 @@ OMNIS_SYNC_API_KEY="${OMNIS_SYNC_API_KEY}" \
 
 ## Krok 8: Nastavení GitHub Secrets pro automatické CI/CD ($0)
 
-V repozitáři na GitHubu otevřete **Settings -> Secrets and variables -> Actions -> New repository secret** a přidejte klíče přesně podle názvů ve workflows `.github/workflows/omnis-zero-cost-ci.yml` a `.github/workflows/omnis-ci.yml`:
+V repozitáři na GitHubu otevřete **Settings -> Secrets and variables -> Actions -> New repository secret** a přidejte klíče podle workflows `.github/workflows/production-ci-cd.yml`, `.github/workflows/omnis-zero-cost-ci.yml` a `.github/workflows/omnis-ci.yml`:
 
 | Název Secretu | Hodnota | Použití |
 | :--- | :--- | :--- |
 | `OCI_VM_HOST` | Veřejná IPv4 adresa vašeho OCI serveru (např. `130.61.xxx.xxx`) | `omnis-zero-cost-ci.yml` SSH deploy |
 | `OCI_VM_USER` | `ubuntu` | `omnis-zero-cost-ci.yml` SSH deploy |
 | `OCI_SSH_PRIVATE_KEY` | Kompletní obsah privátního klíče `~/.ssh/omnis_oci_ed25519` | `omnis-zero-cost-ci.yml` SSH deploy |
-| `OMNIS_BACKEND_URL` | `https://omnis-apex-core.duckdns.org` | Build Android Release AAB v obou CI workflows |
+| `OMNIS_BACKEND_URL` | `https://omnis-apex-core.duckdns.org` | Build Android Release AAB/APK ve všech CI workflows |
+| `OMNIS_KEYSTORE_BASE64` *(volitelně)* | Base64 zakódovaný `.jks` keystore (`base64 -w0 release.jks`) | `production-ci-cd.yml` kryptografický podpis Release APK/AAB (`SIGNING_STATUS=SIGNED`; bez něj `UNSIGNED_R8_ONLY`) |
+| `OMNIS_KEYSTORE_PASSWORD` *(volitelně)* | Heslo ke keystore souboru | `production-ci-cd.yml` Release signing |
+| `OMNIS_KEY_ALIAS` *(volitelně)* | Alias klíče v keystore | `production-ci-cd.yml` Release signing |
+| `OMNIS_KEY_PASSWORD` *(volitelně)* | Heslo ke klíči v keystore | `production-ci-cd.yml` Release signing |
+
+> Každý běh `production-ci-cd.yml` i lokální skript `./scripts/release_v4_5_0.sh` ukládá do výstupních artefaktů soubor `SIGNING_STATUS.txt` (`SIGNED` vs. `UNSIGNED_R8_ONLY`) a kontrolní součty `SHA256SUMS.txt`.
 
 ### Volitelné: Bezplatná statická analýza kódu (SonarQube Cloud Free)
 1. Přihlaste se přes GitHub na [https://sonarcloud.io/](https://sonarcloud.io/).

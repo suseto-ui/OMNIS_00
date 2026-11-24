@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -43,6 +43,19 @@ except ImportError:  # pragma: no cover
 logger = logging.getLogger("omnis.llm_cascade")
 
 
+def parse_retry_after_seconds(header_value: Optional[str], default: float = 15.0) -> float:
+    """Extrahuje Retry-After (v sekundách) a bezpečně jej omezí do [5.0, 300.0]."""
+    if not header_value:
+        return min(300.0, max(5.0, float(default)))
+    try:
+        parsed = float(str(header_value).strip())
+        if parsed > 0:
+            return min(300.0, max(5.0, parsed))
+    except (TypeError, ValueError):
+        pass
+    return min(300.0, max(5.0, float(default)))
+
+
 class CircuitState(str, Enum):
     CLOSED = "CLOSED"
     OPEN = "OPEN"
@@ -61,32 +74,105 @@ class ProviderCircuitBreaker:
     state: CircuitState = CircuitState.CLOSED
     failure_count: int = 0
     opened_at: Optional[float] = None
+    cooldown_until: Optional[float] = None
     last_error: Optional[str] = None
+    last_status_code: Optional[int] = None
+    retry_after_seconds: Optional[float] = None
+    events: List[Dict[str, Any]] = field(default_factory=list)
+
+    def _append_event(self, event_type: str, detail: str, status_code: Optional[int] = None) -> None:
+        entry = {
+            "provider": self.name,
+            "state": self.state.value,
+            "event": event_type,
+            "status_code": status_code,
+            "detail": detail[:240],
+            "cooldown_remaining_seconds": self.cooldown_remaining_seconds(),
+        }
+        self.events.append(entry)
+        if len(self.events) > 20:
+            self.events = self.events[-20:]
+
+    def cooldown_remaining_seconds(self) -> float:
+        if self.state != CircuitState.OPEN:
+            return 0.0
+        now = self.clock()
+        if self.cooldown_until is not None:
+            return round(max(0.0, self.cooldown_until - now), 2)
+        if self.opened_at is not None:
+            return round(max(0.0, (self.opened_at + self.recovery_timeout_seconds) - now), 2)
+        return 0.0
 
     def allow_request(self) -> bool:
         if self.state == CircuitState.CLOSED:
             return True
         if self.state == CircuitState.OPEN:
             now = self.clock()
-            if self.opened_at is not None and (now - self.opened_at) >= self.recovery_timeout_seconds:
+            deadline = self.cooldown_until
+            if deadline is None and self.opened_at is not None:
+                deadline = self.opened_at + self.recovery_timeout_seconds
+            if deadline is not None and now >= deadline:
                 self.state = CircuitState.HALF_OPEN
+                self.cooldown_until = None
+                self._append_event("HALF_OPEN_PROBE", "Cooldown elapsed; testing recovery")
                 return True
             return False
         # HALF_OPEN: povolí jeden zkušební požadavek
         return True
 
     def record_success(self) -> None:
+        was_degraded = self.state != CircuitState.CLOSED
         self.failure_count = 0
         self.opened_at = None
+        self.cooldown_until = None
         self.last_error = None
+        self.last_status_code = None
+        self.retry_after_seconds = None
         self.state = CircuitState.CLOSED
+        if was_degraded:
+            self._append_event("RECOVERED_CLOSED", "Provider recovered to CLOSED")
 
-    def record_failure(self, error: str = "") -> None:
+    def record_failure(
+        self,
+        error: str = "",
+        status_code: Optional[int] = None,
+        retry_after_seconds: Optional[float] = None,
+    ) -> None:
         self.failure_count += 1
         self.last_error = error[:240] if error else self.last_error
-        if self.state == CircuitState.HALF_OPEN or self.failure_count >= self.failure_threshold:
+        if status_code is not None:
+            self.last_status_code = int(status_code)
+
+        should_open = (
+            self.state == CircuitState.HALF_OPEN
+            or self.failure_count >= self.failure_threshold
+            or status_code == 429
+        )
+        if should_open:
+            now = self.clock()
+            effective_cooldown = (
+                min(300.0, max(5.0, float(retry_after_seconds)))
+                if retry_after_seconds is not None
+                else float(self.recovery_timeout_seconds)
+            )
+            self.retry_after_seconds = effective_cooldown if retry_after_seconds is not None else None
             self.state = CircuitState.OPEN
-            self.opened_at = self.clock()
+            self.opened_at = now
+            self.cooldown_until = now + effective_cooldown
+            self._append_event(
+                "CIRCUIT_OPENED",
+                error or f"Tripped (HTTP {status_code})",
+                status_code=status_code,
+            )
+            logger.warning(
+                "CircuitBreaker OPEN provider=%s status_code=%s failures=%s cooldown_s=%.1f",
+                self.name,
+                status_code,
+                self.failure_count,
+                effective_cooldown,
+            )
+        else:
+            self._append_event("FAILURE_RECORDED", error or "Transient provider error", status_code=status_code)
 
     def snapshot(self) -> Dict[str, Any]:
         return {
@@ -95,7 +181,11 @@ class ProviderCircuitBreaker:
             "failure_count": self.failure_count,
             "failure_threshold": self.failure_threshold,
             "recovery_timeout_seconds": self.recovery_timeout_seconds,
+            "cooldown_remaining_seconds": self.cooldown_remaining_seconds(),
+            "last_status_code": self.last_status_code,
+            "retry_after_seconds": self.retry_after_seconds,
             "last_error": self.last_error,
+            "recent_events": list(self.events[-5:]),
         }
 
 
@@ -143,12 +233,26 @@ class LLMCascadeRouter:
             "gemini": ProviderCircuitBreaker(name="gemini"),
             "openrouter": ProviderCircuitBreaker(name="openrouter"),
         }
+        self._last_http_failures: Dict[str, Dict[str, Any]] = {}
+
+    def _record_http_failure_meta(self, provider: str, status_code: int, retry_after_header: Optional[str]) -> None:
+        retry_after = parse_retry_after_seconds(retry_after_header) if status_code == 429 else None
+        self._last_http_failures[provider] = {
+            "status_code": status_code,
+            "retry_after_seconds": retry_after,
+        }
 
     def get_breaker_status(self) -> Dict[str, Any]:
+        snapshots = {k: b.snapshot() for k, b in self.breakers.items()}
+        tripped = [k for k, b in self.breakers.items() if b.state != CircuitState.CLOSED]
+        max_cooldown = max((s["cooldown_remaining_seconds"] for s in snapshots.values()), default=0.0)
         return {
             "mode": self.mode,
+            "degraded_mode": len(tripped) > 0,
+            "tripped_providers": tripped,
+            "max_cooldown_remaining_seconds": max_cooldown,
             "gemma4_agent": self.gemma_config,
-            "breakers": {k: b.snapshot() for k, b in self.breakers.items()},
+            "breakers": snapshots,
         }
 
     @retry(
@@ -168,6 +272,7 @@ class LLMCascadeRouter:
         timeout: float = 15.0,
         temperature: float = 0.3,
         max_tokens: int = 1500,
+        provider_key: Optional[str] = None,
     ) -> Optional[str]:
         if httpx is None:
             return None
@@ -185,8 +290,12 @@ class LLMCascadeRouter:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(f"{base_url.rstrip('/')}/chat/completions", json=payload, headers=headers)
             if resp.status_code == 200:
+                if provider_key:
+                    self._last_http_failures.pop(provider_key, None)
                 data = resp.json()
                 return data["choices"][0]["message"]["content"]
+            if provider_key:
+                self._record_http_failure_meta(provider_key, resp.status_code, resp.headers.get("Retry-After"))
             logger.warning("Provider at %s returned status %s", base_url, resp.status_code)
         return None
 
@@ -219,12 +328,14 @@ class LLMCascadeRouter:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code == 200:
+                self._last_http_failures.pop("gemini", None)
                 data = resp.json()
                 candidates = data.get("candidates", [])
                 if candidates:
                     parts = candidates[0].get("content", {}).get("parts", [])
                     if parts:
                         return parts[0].get("text", "")
+            self._record_http_failure_meta("gemini", resp.status_code, resp.headers.get("Retry-After"))
             logger.warning("Gemini REST API returned status %s", resp.status_code)
         return None
 
@@ -253,6 +364,7 @@ class LLMCascadeRouter:
                         timeout=10.0,
                         temperature=float(self.gemma_config.get("temperature", 0.1)),
                         max_tokens=local_max_tokens,
+                        provider_key="gemma4_local",
                     )
                     if res:
                         breaker.record_success()
@@ -262,7 +374,12 @@ class LLMCascadeRouter:
                             "agent_config": self.gemma_config,
                             "content": res,
                         }
-                    breaker.record_failure("Empty or non-200 response from Local Gemma 4")
+                    meta = self._last_http_failures.pop("gemma4_local", {})
+                    breaker.record_failure(
+                        "Empty or non-200 response from Local Gemma 4",
+                        status_code=meta.get("status_code"),
+                        retry_after_seconds=meta.get("retry_after_seconds"),
+                    )
                 except Exception as exc:
                     breaker.record_failure(str(exc))
                     logger.info("Tier 1 local inference failed: %s", exc)
@@ -281,11 +398,17 @@ class LLMCascadeRouter:
                         "llama-3.3-70b-versatile",
                         messages,
                         timeout=12.0,
+                        provider_key="groq",
                     )
                     if res:
                         breaker.record_success()
                         return {"status": "success", "provider": "Tier 2: GroqCloud", "content": res}
-                    breaker.record_failure("Empty or non-200 response from GroqCloud")
+                    meta = self._last_http_failures.pop("groq", {})
+                    breaker.record_failure(
+                        "Empty or non-200 response from GroqCloud",
+                        status_code=meta.get("status_code"),
+                        retry_after_seconds=meta.get("retry_after_seconds"),
+                    )
                 except Exception as exc:
                     breaker.record_failure(str(exc))
                     logger.info("Tier 2 GroqCloud failed: %s", exc)
@@ -302,7 +425,12 @@ class LLMCascadeRouter:
                     if res:
                         breaker.record_success()
                         return {"status": "success", "provider": "Tier 3: Google Gemini", "content": res}
-                    breaker.record_failure("Empty or non-200 response from Gemini REST")
+                    meta = self._last_http_failures.pop("gemini", {})
+                    breaker.record_failure(
+                        "Empty or non-200 response from Gemini REST",
+                        status_code=meta.get("status_code"),
+                        retry_after_seconds=meta.get("retry_after_seconds"),
+                    )
                 except Exception as exc:
                     breaker.record_failure(str(exc))
                     logger.info("Tier 3 Gemini failed: %s", exc)
@@ -321,22 +449,31 @@ class LLMCascadeRouter:
                         "openrouter/free",
                         messages,
                         timeout=15.0,
+                        provider_key="openrouter",
                     )
                     if res:
                         breaker.record_success()
                         return {"status": "success", "provider": "Tier 4: OpenRouter Free", "content": res}
-                    breaker.record_failure("Empty or non-200 response from OpenRouter")
+                    meta = self._last_http_failures.pop("openrouter", {})
+                    breaker.record_failure(
+                        "Empty or non-200 response from OpenRouter",
+                        status_code=meta.get("status_code"),
+                        retry_after_seconds=meta.get("retry_after_seconds"),
+                    )
                 except Exception as exc:
                     breaker.record_failure(str(exc))
                     logger.info("Tier 4 OpenRouter failed: %s", exc)
             else:
                 skipped_open_breakers.append("openrouter")
 
+        breaker_status = self.get_breaker_status()
         return {
             "status": "fallback",
+            "degraded_mode": True,
             "provider": "Deterministic OMNIS Sovereign Fallback",
             "tiers_tried": tiers_tried,
             "open_circuit_breakers": skipped_open_breakers,
+            "breaker_status": breaker_status,
             "content": (
                 "O.M.N.I.S. APEX Security Kernel: All external LLM cascade providers "
                 f"(Tiers tried: {', '.join(tiers_tried) or 'NONE'}; Open breakers: {', '.join(skipped_open_breakers) or 'NONE'}) "

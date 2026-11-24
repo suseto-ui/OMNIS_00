@@ -48,7 +48,7 @@ graph TD
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                 SJEDNOCENÁ PERZISTENCE & SYNCHRONIZACE (0 USD OSS)              │
 │  ┌──────────────────────────────────┐        ┌───────────────────────────────┐  │
-│  │ Room v18 + SQLCipher AES-256     │ ─────► │ PostgreSQL 17 Multi-Engine    │  │
+│  │ Room v19 + SQLCipher AES-256     │ ─────► │ PostgreSQL 17 Multi-Engine    │  │
 │  │ (Transactional Outbox + Keystore)│ Sync   │ (pgvector + AGE + ElectricSQL)│  │
 │  └──────────────────────────────────┘        └───────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -93,26 +93,28 @@ Všech $\binom{8}{2} = 28$ interakcí mezi doménami je kvantifikováno empirick
 
 ---
 
-## 🛡️ 3. 6-Úrovňový Refusal Ladder Gatekeeper (Zero-Hallucination)
+## 🛡️ 3. Dual-Gate & Logická Vrstva Gatekeeper G1–G6 (Zero-Hallucination)
 
-Každý dotaz i odpověď v systému O.M.N.I.S. povinně prochází 6 rigorózními verifikačními branami:
+Každý dotaz (vstupní větev) i vygenerovaná odpověď před vstupem do 8D Matice dopadu (výstupní větev — **Dual-Gate**) v systému O.M.N.I.S. povinně prochází sekvenční logickou vrstvou **`Gatekeeper G1–G6`** (`GatekeeperG1G6.kt` na Androidu a `backend/gateway/gatekeeper.py` na backendu):
 
 ```mermaid
 flowchart LR
-    Q[Dotaz Operátora] --> G1[G1: Entry Point Resolution]
-    G1 --> G2[G2: Concept Coupling]
-    G2 --> G3[G3: Apache AGE Causal Path]
-    G3 --> G4[G4: Quotable Evidence]
-    G4 --> G5[G5: Retraction & Integrity]
-    G5 --> G6[G6: Shannon Entropy Check]
-    G6 -->|SCHVÁLENO| EXEC[Generování Odpovědi]
-    G6 -->|REFUSED| REF[Transparentní Diagnostika & Nápověda]
+    Q[Vstupní / Výstupní Data] --> G1[G1: Entry Point & Typová Sanitizace]
+    G1 --> G2[G2: Concept Coupling & 8D Sanitizace]
+    G2 --> G3[G3: Causal Path & Konečnost NaN/Inf]
+    G3 --> G4[G4: Quotable Evidence & Nenulový Vektor]
+    G4 --> G5[G5: Retraction & Injection Integrity]
+    G5 --> G6[G6: Shannon Entropy S < 2.08 & ZK Audit]
+    G6 -->|SCHVÁLENO| MAT[8D Matice Dopadů & Odpověď]
+    G6 -->|SELHÁNÍ BRÁNY| EXC[GatekeeperChainException & Audit Log]
 ```
 
-1. **G1 (Entry Point Resolution)**: Identifikace a mapování vstupních uzlů v 8D ontologii.
-2. **G2 (Concept Coupling)**: Provázání minimálně 2 konceptů a sémantická sanitizace.
-3. **G3 (Causal Graph Path)**: Ověření existence souvislé kauzální cesty v Apache AGE (`omnis_causal_graph`) / CSR grafu pomocí Judea Pearl Do-Calculus $P(Y \mid do(X=x))$.
-4. **G4 (Quotable Evidence)**: Důkazní ukotvení vůči normativním standardům (ISO/IEC 42001, NIST SP 800-207, EU AI Act, NIS2).
+Každá ze 6 bran povinně zapisuje svou operaci do auditního systému (`AuditLogger` / `zk_audit_ledger` se zřetězeným SHA-256 otiskem) a při jakémkoli selhání (např. `NaN`, `Inf`, nulový vektor, injection nebo překročení entropie) okamžitě přeruší řetězec vyhozením definované výjimky **`GatekeeperChainException`**:
+
+1. **G1 (Entry Point Resolution & Input Sanitization)**: Identifikace uzlů v 8D ontologii a normalizace textu/payloadu.
+2. **G2 (Concept Coupling & Range Clamp)**: Provázání minimálně 2 konceptů a validace doménových hranic.
+3. **G3 (Causal Graph Path & Finite Tensor Guard)**: Ověření souvislé kauzální cesty v Apache AGE (`omnis_causal_graph`) / CSR grafu přes Judea Pearl Do-Calculus $P(Y \mid do(X=x))$ a zamítnutí `NaN`/`Inf`.
+4. **G4 (Quotable Evidence & Non-Zero Vector Guard)**: Důkazní ukotvení vůči normativním standardům (ISO/IEC 42001, NIST SP 800-207, EU AI Act, NIS2) a blokace prázdných / nulových 8D a 64D vektorů.
 5. **G5 (Retraction & Integrity)**: Ochrana proti prompt injection a kontrola proti tabulce `retraction_watch_blacklist`.
 6. **G6 (Entailment & Shannon Entropy)**: Striktní logická dedukce a výpočet informační entropie $S = -\sum p_i \ln p_i < 2.08$.
 
@@ -150,12 +152,12 @@ stateDiagram-v2
 
 | Vrstva | Technologie | Popis |
 | :--- | :--- | :--- |
-| **Presentation (UI)** | Jetpack Compose (M3) | 8D Canvas Radar, Octagon Dashboard, Timeline Chat, Admin Hub |
-| **Domain Logic** | Kotlin 2.0 Coroutines | `ApexOrchestratorEngine`, `OmnisFivePhaseExecutor`, `AkgeTensorKernel` (perkolace $p_c \ge 0.38$), `HybridInferenceOrchestrator` |
-| **Backend & Graph** | Python FastAPI / Apache AGE | `AgeCausalGraphRepository` (`LISTEN omnis_graph_invalidated`), `CsrKnowledgeGraph`, `Q_omnis` validátor, `ZkAuditLedgerService` |
-| **Persistence (Edge)** | Room DB v18 & SQLCipher | Offline-first AES-256-CBC šifrovaná paměť s Android Keystore a Transactional Outbox (`omnis_sync_outbox`) |
+| **Presentation (UI)** | Jetpack Compose (M3) | 8D Canvas Radar, Octagon Dashboard, Timeline Chat (`ChatStatusBanner`), Multi-Agentní Debata, Tensor Oversight, Admin Hub |
+| **Domain & Gatekeeper** | Kotlin 2.0 Coroutines | `ApexOrchestratorEngine`, `OmnisFivePhaseExecutor`, `GatekeeperG1G6` (`GatekeeperChainException`), `OmnisCircuitBreaker` (HTTP 429 `Retry-After`), `AkgeTensorKernel` |
+| **Backend & Graph** | Python FastAPI / Apache AGE | `GatekeeperG1G6` (`backend/gateway/gatekeeper.py`), `AgeCausalGraphRepository`, `CsrKnowledgeGraph`, `ProviderCircuitBreaker`, `Q_omnis` validátor, `ZkAuditLedgerService` |
+| **Persistence (Edge)** | Room DB v19 & SQLCipher | Offline-first AES-256-CBC šifrovaná paměť (`omnis_local_vectors_64d`, `MIGRATION_18_19`) s Android Keystore a Transactional Outbox (`omnis_sync_outbox`) |
 | **Persistence (Core)** | PostgreSQL 17 + `pgvector` + `pgcrypto` | 64D HNSW index (`rag_memory_64d`), RLS politiky, least-privilege role (`omnis_app_rw`, `omnis_audit_append`, `omnis_sync_repl`), append-only triggery |
-| **Sync & Cascade** | ElectricSQL 1.8.1 + LLM Cascade | Logická replikace `electric_publication_default` (`REPLICA IDENTITY FULL`), Android Firebase AI Logic (`gemini-3.8-flash` / `gemini-3.5-flash-lite`) & serverová kaskáda (`gemma4_local` -> Groq -> Gemini -> OpenRouter) |
+| **Sync & Cascade** | ElectricSQL 1.8.1 + LLM Cascade | Logická replikace `electric_publication_default` (`REPLICA IDENTITY FULL`), Android Firebase AI Logic & serverová kaskáda (`gemma4_local` -> Groq -> Gemini -> OpenRouter) |
 | **Vault Index** | `_OMNIS_VAULT/` (v7.0) | Kompletní topologický a forenzní index (`00_OMNIS_MASTER_INDEX.md`, `00_TOPOLOGY_GRAPH.json`) ověřovaný SHA-256 kontrolními součty |
 
 ---
@@ -184,10 +186,28 @@ docker compose up -d --build
 
 ## 📦 7. Poznámky k Vydání `v4.5.0-GA`
 
-- **CI/CD & Statické brány:** Sjednocený workflow `.github/workflows/production-ci-cd.yml` (Detekt, `pytest` s pokrytím ≥ 80 %, `ruff`, `bandit`, `radon`, Android `:app:testDebugUnitTest` a podepsané R8 release artefakty).
+- **CI/CD & Provenance:** Sjednocený workflow `.github/workflows/production-ci-cd.yml` (Detekt, `pytest` s pokrytím ≥ 80 %, `ruff`, `bandit`, `radon`, Android `:app:testDebugUnitTest`, R8 release APK/AAB a automatické vystavení `SIGNING_STATUS.txt` se stavem `SIGNED` nebo `UNSIGNED_R8_ONLY` + `SHA256SUMS.txt`).
 - **Sjednocená Perzistence:** PostgreSQL 17 (`pgvector`, `Apache AGE`, `pgcrypto`), `ElectricSQL 1.8.1`, Android Room **v19** + SQLCipher AES-256 s lokálním 64D vektorovým úložištěm (`omnis_local_vectors_64d`, `MIGRATION_18_19`).
-- **Kognitivní Jádro & Zero-Trust:** Sjednocená brána LLM inference (`tools/gemma4/agent.yaml` + `ProviderCircuitBreaker` CLOSED/OPEN/HALF_OPEN), ošetření `NaN`/`Inf` v AKGE-8D a 64D L2-normalizaci, entropická brána G6 ($S < 2.08$), konstantně-časová verifikace `zk_audit_ledger` a striktní RBAC izolace `STANDARD_USER` vs. `ADMIN_OPERATOR`.
-- **Android Production Release:** `versionCode = 450`, `versionName = 4.5.0`, R8 minifikace a shrink resources (`proguard-rules.pro`) a environmentální podpis (`OMNIS_KEYSTORE_FILE`).
+- **Kognitivní Jádro, Gatekeeper G1–G6 & Circuit Breaker:** Sekvenční vrstva `Gatekeeper G1–G6` před 8D maticí dopadů (s auditním logováním každé brány a `GatekeeperChainException` při `NaN`/`Inf`/nulových vektorech), Dual-Gate na vstupu i výstupu, jednotný HTTP 429 `Retry-After` cooldown `[5, 300]` s v `OmnisCircuitBreaker` / `ProviderCircuitBreaker` s přehledem v `ChatStatusBanner`, konstantně-časová verifikace `zk_audit_ledger` a striktní RBAC izolace.
+- **Android Production Release:** `versionCode = 450`, `versionName = 4.5.0`, R8 minifikace a shrink resources (`proguard-rules.pro`) a environmentální podpis (`OMNIS_KEYSTORE_FILE` / GitHub Secret `OMNIS_KEYSTORE_BASE64`).
+
+---
+
+## 📤 8. Příprava a Nahrání na GitHub
+
+Repozitář neobsahuje `.env`, `local.properties` ani soukromé API klíče (`.gitignore` vylučuje lokální keystore, databáze, cache i `release-artifacts/` / `release-v*/`). Pro první nahrání na GitHub a spuštění CI/CD:
+
+```bash
+git init -b main
+git add .
+git commit -m "chore: prepare O.M.N.I.S. APEX v4.5.0-GA release and docs"
+git remote add origin https://github.com/suseto-ui/OMNIS.git
+git push -u origin main
+```
+
+Volitelné a doporučené GitHub Actions Secrets (viz detailně `DEPLOYMENT_FREE_NON_GCP.md` Krok 8):
+- `OMNIS_BACKEND_URL`, `OCI_VM_HOST`, `OCI_VM_USER`, `OCI_SSH_PRIVATE_KEY`, `SONAR_TOKEN`
+- Pro produkčně podepsaný APK/AAB v `production-ci-cd.yml`: `OMNIS_KEYSTORE_BASE64`, `OMNIS_KEYSTORE_PASSWORD`, `OMNIS_KEY_ALIAS`, `OMNIS_KEY_PASSWORD` (bez nich CI vygeneruje nepodepsaný R8 build označený `UNSIGNED_R8_ONLY`).
 
 ---
 

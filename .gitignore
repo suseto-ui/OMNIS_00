@@ -56,3 +56,14 @@ frontend/node_modules/
 frontend/dist/
 .pytest_cache/
 coverage.xml
+
+# Gradle Module Builds, Release Bundles & Tool Caches
+app/build/
+**/build/
+release-artifacts/
+release-v*/
+*.hprof
+.ruff_cache/
+.mypy_cache/
+sonar-scanner-*/
+.scannerwork/

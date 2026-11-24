@@ -37,9 +37,10 @@ fun OmnisSmartHelpDialog(
 
     val faqs = listOf(
         "Jak vytvořit nové vlákno?" to "V bočním menu (otevřete ikonou vlevo nahoře) klikněte na tlačítko '+ Nové vlákno'. Vlákno můžete také přejmenovat ikonou tužky.",
-        "Jak přiložit soubor nebo fotku?" to "Ve spodním panelu chatu použijte tlačítko '+' pro přiložení souborů (PDF, texty, kódy) nebo ikonu fotoaparátu pro OCR skenování obrázků.",
+        "Jak přiložit soubor nebo fotku?" to "Ve spodním panelu chatu použijte tlačítko '+' pro přiložení souborů (PDF, texty, kódy) nebo výběr fotky přes systémový Android Photo Picker bez plošných oprávnění, případně ikonu fotoaparátu pro OCR skenování.",
         "Jak exportovat celou konverzaci?" to "V horní liště chatu klikněte na ikonu sdílení (Share) a zvolte export do PDF nebo Markdownu (.md).",
-        "Co dělá Jistič (Circuit Breaker)?" to "Administrátorský prvek pro okamžité přerušení nebo bypass externích API volání v případě přetížení nebo výpadku."
+        "Co dělá Gatekeeper G1–G6 a Dual-Gate?" to "Vrstva Gatekeeper G1–G6 postupně validuje a sanitizuje dotazy, PII údaje, 8D váhy i 64D embeddingy před vstupem do Matice dopadů a při chybě (např. NaN nebo nulový vektor) okamžitě přeruší řetězec. Refusal Ladder navíc kontroluje i samotný vygenerovaný výstup modelu.",
+        "Co dělá Jistič (Circuit Breaker) při HTTP 429?" to "Při výpadku nebo limitu API (HTTP 429) jistič respektuje hlavičku Retry-After (5–300 s), zobrazí v chatu banner degradovaného režimu a přepne na bezpečný deterministický fallback."
     )
 
     val filteredFaqs = faqs.filter { 
@@ -257,9 +258,9 @@ fun OmnisSmartHelpDialog(
 
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     listOf(
-                                        "Jak funguje 8D analýza?" to "8D Octagon analýza vyhodnocuje tenzory, metriky tření a doménové vazby v reálném čase pro maximální efektivitu kognitivního jádra.",
-                                        "Jak přizpůsobit sémantickou bránu?" to "V administračním panelu můžete spínat Prompt Gateway a Jistič (Circuit Breaker) pro ochranu a validaci vstupů.",
-                                        "Kde se ukládají data?" to "Všechna data, zprávy i artefakty jsou bezpečně uloženy lokálně v zašifrované Room databázi (v11) s podporou offline režimu."
+                                        "Jak funguje 8D analýza a Matice dopadů?" to "8D Octagon analýza vyhodnocuje 8 domén (SYS, ECON, PSYCH, ECO, LAW, SEC, PHYS, SOC). Před vstupem do Matice dopadů všechna data sekvenčně sanitizuje a ověřuje vrstva Gatekeeper G1–G6.",
+                                        "Jak funguje Dual-Gate G1–G6 a Jistič?" to "Brány G1–G6 chrání vstup i vygenerovaný výstup proti injekcím, únikům <scratchpad>, NaN hodnotám a nulovým vektorům. Při chybě HTTP 429 jistič aktivuje Retry-After cooldown (5–300 s) a zobrazí stavový banner.",
+                                        "Kde se ukládají data?" to "Lokálně v šifrované databázi Room v19 (SQLCipher AES-256-CBC s 64D vektory a outbox frontou) s volitelnou synchronizací vůči backendu PostgreSQL 17 + ElectricSQL 1.8.1."
                                     ).forEach { (q, a) ->
                                         Surface(
                                             modifier = Modifier

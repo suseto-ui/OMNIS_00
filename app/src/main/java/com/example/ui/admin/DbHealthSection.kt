@@ -258,7 +258,7 @@ fun AdminDbHealthCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Lokální Room v18 (SQLCipher AES-256) slouží jako šifrovaná primární vrstva s nulovou latencí. Změny se atomicky ukládají do Outboxu a replikují do PostgreSQL 17.",
+                text = "Lokální Room v19 (SQLCipher AES-256) slouží jako šifrovaná primární vrstva s nulovou latencí. Změny se atomicky ukládají do Outboxu a replikují do PostgreSQL 17.",
                 color = OmnisTextMuted,
                 fontSize = 10.sp,
                 lineHeight = 13.sp

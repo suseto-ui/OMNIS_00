@@ -110,4 +110,35 @@ class RefusalLadderEngineTest {
         assertNull(overridden.refusingGate)
         assertTrue(PromptGateway.lastVerdict.value!!.isApproved)
     }
+
+    @Test
+    fun `evaluateOutput approves clean synthesis and blocks leaked scratchpad or corrupt NaN zero-vector`() {
+        val clean = RefusalLadderEngine.evaluateOutput(
+            query = "Shrň stav domény SYS",
+            outputText = "ROZHODNUTÍ: Architektura splňuje požadavky NIS2 a Eulerova charakteristika je stabilní.",
+            outputDomainScores = mapOf("SYS" to 0.92f, "SEC" to 0.90f, "LAW" to 0.88f)
+        )
+        assertTrue(clean.isApproved)
+
+        val leaked = RefusalLadderEngine.evaluateOutput(
+            query = "Shrň stav",
+            outputText = "<scratchpad>internal leak</scratchpad> Odpověď"
+        )
+        assertFalse(leaked.isApproved)
+        assertEquals(GateId.G1, leaked.refusingGate?.gateId)
+
+        val zeroVecRefusal = RefusalLadderEngine.evaluateOutput(
+            query = "Embedding audit",
+            outputText = "Validní text výstupu",
+            outputEmbedding64 = FloatArray(64) { 0.0f }
+        )
+        assertFalse(zeroVecRefusal.isApproved)
+        assertEquals(GateId.G6, zeroVecRefusal.refusingGate?.gateId)
+        assertTrue(zeroVecRefusal.refusingGate?.reason?.contains("G6_NON_FINITE_OR_ZERO_VECTOR") == true)
+        assertTrue(
+            com.example.telemetry.TelemetryEngine.events.value.any {
+                it.component == "GATE_G6_BOUNDARY" && it.type == "ERROR"
+            }
+        )
+    }
 }

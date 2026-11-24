@@ -34,39 +34,42 @@ Architektura rozhraní O.M.N.I.S. je řízena dvěma **ortogonálními (na sobě
 1. **Frontendový Routing & Navigation Layout:**
    - Směrování probíhá přes izolovaný `UserNavigationLayout` a reaktivní `UserTabRouter`.
    - `UserTopAppBar` a `UserDrawerContent` neobsahují systémové diagnostické odznaky ani servisní přepínače.
-2. **Přístupné Záložky (`OmnisBottomNavigationBar`):**
-   - **Chat (`CHAT`)**, **Kokpit (`DASHBOARD`)**, **8D Radar (`ANALYTICS`)**, **Scénáře (`SCENARIOS`)**, **Cíle (`GOALS`)**, **Artefakty (`ARTIFACTS`)**, **Paměť (`MEMORY`)**, **Kauzální Simulátor (`CAUSAL_SIMULATOR`)**, **Dialektika (`DIALECTICS`)**, **Neurální Nexus (`NEXUS`)**, **Průvodce (`GUIDE`)**.
+2. **Přístupné Záložky (`UserTabRouter`):**
+   - **Multi-Agentní Debata (`MULTI_AGENT_DEBATE`)**, **Kokpit (`DASHBOARD`)**, **Chat (`CHAT`)**, **Neurální Nexus (`NEXUS`)**, **Průvodce (`GUIDE`)**, **Cíle (`GOALS`)**, **Scénáře (`SCENARIOS`)**, **Artefakty (`ARTIFACTS`)**, **Paměť (`MEMORY`)**, **8D Radar (`ANALYTICS`)**, **Kauzální Simulátor (`CAUSAL_SIMULATOR`)**, **Dialektika (`DIALECTICS`)**, **Tensor Oversight (`TENSOR_OVERSIGHT`)**, **Nastavení (`SETTINGS`)**, **Profil (`PROFILE`)**, **Reputace (`REPUTATION`)**.
 3. **Izolace Dat (Multi-Tenant & RLS):**
    - Na klientu jsou vlákna filtrována dle `currentUsername`, na backendu jsou tabulky v PostgreSQL 17 chráněny politikami Row-Level Security (`omnis.current_user_id`, `omnis.current_role`).
 
 #### B. Administrátor / Operátor (`ADMIN_OPERATOR`):
 1. **Vyhrazený Layout:** `AdminNavigationLayout`, `AdminTabRouter`, `AdminTopAppBar`, `AdminDrawerContent`.
-2. **Exkluzivní Moduly:**
-   - **Admin Hub (`ADMIN`):** Diagnostika `AdminDbHealthCard`, stav `omnis_encrypted_db` (SQLCipher AES-256) a `omnis_sync_outbox`, synchronizace do PostgreSQL 17 / ElectricSQL, biometrický test a test JWT interceptoru.
-   - **Kognitivní Uzly (`NODES`)**, **Matrix / Octagon (`MATRIX`)**, **Dev Prompt Lab (`DEV_PROMPT_LAB`)**, **Telemetrie (`TELEMETRY`)**, **Auditní Centrum (`PRODUCTION_AUDIT`)**, **Kryptografický Audit Ledger (`ZK_LEDGER`)**.
+2. **Exkluzivní Administrátorské Moduly (navíc oproti uživatelským záložkám):**
+   - **APEX Dashboard (`APEX_DASHBOARD`)**: Agregovaná telemetrie a stabilita systému.
+   - **Admin Hub (`ADMIN`)**: Diagnostika `AdminDbHealthCard`, stav `omnis_encrypted_db` (SQLCipher AES-256) a `omnis_sync_outbox`, synchronizace do PostgreSQL 17 / ElectricSQL, biometrický test a test JWT interceptoru.
+   - **Kognitivní Uzly (`NODES`)**, **Matrix / Octagon (`MATRIX`)**, **Telemetrie (`TELEMETRY`)**, **Sémantická Testovací Laboratoř (`TEST_SEMANTIC`)**, **Dev Prompt Lab (`DEV_PROMPT_LAB`)**, **Produkční Audit (`PRODUCTION_AUDIT`)**.
 
 ---
 
-## 🛡️ ČÁST II: REFUSAL LADDER GATEKEEPER & PERZISTENCE (G1–G6)
+## 🛡️ ČÁST II: LOGICKÁ VRSTVA GATEKEEPER G1–G6 (DUAL-GATE) & PERZISTENCE
 
 ```mermaid
 flowchart TD
-    INPUT[Vstupní Prompt] --> G1[G1: Entry Point Mapovani v 8D]
-    G1 -->|OK| G2[G2: Concept Coupling Min 2 Koncepty]
-    G2 -->|OK| G3[G3: Apache AGE Causal Path Do-Calculus]
-    G3 -->|OK| G4[G4: Quotable Evidence ISO/EU AI Act/NIS2]
-    G4 -->|OK| G5[G5: Retraction Blacklist & Integrity]
-    G5 -->|OK| G6[G6: Shannon Entropy S < 2.08]
+    INPUT[Vstupní Prompt / Výstup před 8D Maticí] --> G1[G1: Entry Point & Typová Sanitizace]
+    G1 -->|AUDIT + OK| G2[G2: Concept Coupling Min 2 Koncepty]
+    G2 -->|AUDIT + OK| G3[G3: Causal Path Do-Calculus & NaN/Inf Guard]
+    G3 -->|AUDIT + OK| G4[G4: Quotable Evidence & Nenulový Vektor]
+    G4 -->|AUDIT + OK| G5[G5: Retraction Blacklist & Injection Integrity]
+    G5 -->|AUDIT + OK| G6[G6: Shannon Entropy S < 2.08 & ZK Hash]
 
-    G1 -->|FAIL| REF[Grounded Refusal Status & Remediation]
-    G2 -->|FAIL| REF
-    G3 -->|FAIL| REF
-    G4 -->|FAIL| REF
-    G5 -->|FAIL| REF
-    G6 -->|FAIL| REF
+    G1 -->|FAIL| EXC[GatekeeperChainException & Audit Stopa]
+    G2 -->|FAIL| EXC
+    G3 -->|FAIL| EXC
+    G4 -->|FAIL| EXC
+    G5 -->|FAIL| EXC
+    G6 -->|FAIL| EXC
 
-    G6 -->|PASS| EXEC[Execution Engine & LLM Stream]
+    G6 -->|PASS| MAT[8D Matice Dopadů & Odpověď]
 ```
+
+- **Sekvenční logická vrstva `Gatekeeper G1–G6` (`GatekeeperG1G6.kt` / `backend/gateway/gatekeeper.py`):** Data jsou před vstupem do 8D Matice dopadů postupně sanitizována a ověřována branami `G1` až `G6` (Dual-Gate na vstupu i výstupu v `OmnisFivePhaseExecutor`, `UnifiedResponseEvaluator`, `PgVectorImpactMatrixView` a v backendových routerech/službách). Každá brána zaznamenává svůj průchod do auditního systému (s řetězeným SHA-256 otiskem) a při selhání (`NaN`, `Inf`, nulový vektor, injection) přeruší řetězec vyhozením `GatekeeperChainException`.
 
 ### 2.1 Sjednocená Perzistenční Vrstva
 1. **Android Edge (`OmnisDatabase` v19 + SQLCipher):**
@@ -80,10 +83,10 @@ flowchart TD
 3. **Ochrana Brány G5 (`retraction_watch_blacklist`):**
    - Funkce `verify_retraction_watch()` v `backend/app/db_engine.py` ověřuje dotazy proti tabulce `public.retraction_watch_blacklist`.
 
-### 2.2 Inferenční & Bezpečnostní Kaskáda
-- **Android klient:** `FirebaseAiService` (`gemini-3.8-flash` / `gemini-3.5-flash-lite`) a lokální `HybridInferenceOrchestrator` (>= 4 GB RAM práh, 1500 ms timeout, bez dynamického načítání `.so`/`.dex`/`.jar`).
-- **Backend server:** `backend/app/llm_cascade.py` (Tier 1 lokální Gemma 4 dle `tools/gemma4/agent.yaml` -> Groq -> Gemini -> OpenRouter s `ProviderCircuitBreaker` CLOSED/OPEN/HALF_OPEN), vystaveno přes `/api/v1/inference/cascade` a `/api/v1/inference/cascade/status`, s volitelným ECDSA P-256 podepisováním při `ENABLE_CLOUD_KMS=true` (výchozí je deterministický `HMAC-SHA256-HASH-CHAIN`).
-- **Release `v4.5.0-GA` Pipeline:** `./scripts/release_v4_5_0.sh` ověří všechny brány (Fáze 1–4), spustí Android & Python testy, sestaví podepsané R8/ProGuard APK/AAB (`versionCode = 450`, `versionName = "4.5.0"`) a vygeneruje `release-v4.5.0/SHA256SUMS.txt`.
+### 2.2 Inferenční Kaskáda, Circuit Breaker & Release Provenance
+- **Android klient:** `FirebaseAiService` (`gemini-3.8-flash` / `gemini-3.5-flash-lite`) a lokální `HybridInferenceOrchestrator` (>= 4 GB RAM práh, 1500 ms timeout, bez dynamického načítání `.so`/`.dex`/`.jar`). `OmnisCircuitBreaker` při HTTP 429 respektuje hlavičku `Retry-After` v bezpečném intervalu **5–300 s** a propaguje degraded stav do UI přes `ChatStatusBanner`.
+- **Backend server:** `backend/app/llm_cascade.py` (Tier 1 lokální Gemma 4 dle `tools/gemma4/agent.yaml` -> Groq -> Gemini -> OpenRouter s `ProviderCircuitBreaker` `CLOSED`/`OPEN`/`HALF-OPEN` a HTTP 429 `Retry-After` `[5, 300]` s), vystaveno přes `/api/v1/inference/cascade` a `/api/v1/inference/cascade/status`, s volitelným ECDSA P-256 podepisováním při `ENABLE_CLOUD_KMS=true` (výchozí je deterministický `HMAC-SHA256-HASH-CHAIN`).
+- **Release `v4.5.0-GA` Pipeline:** `./scripts/release_v4_5_0.sh` i `.github/workflows/production-ci-cd.yml` ověří všechny brány, spustí Android & Python testy, sestaví R8/ProGuard APK/AAB (`versionCode = 450`, `versionName = "4.5.0"`) a vygenerují `SIGNING_STATUS.txt` (`SIGNED` při přítomnosti keystore, jinak `UNSIGNED_R8_ONLY`) společně s `SHA256SUMS.txt`.
 
 ---
 

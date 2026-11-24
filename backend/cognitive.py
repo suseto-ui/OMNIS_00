@@ -4,12 +4,13 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
+from backend.gateway import GatekeeperChainException, GatekeeperG1G6
 from backend.gemini_service import cognitive_service
 from backend.models import Conversation, Message, ImpactMatrixMetric, VectorMemory
 from backend.schemas import (
@@ -229,13 +230,34 @@ async def process_user_query(
     db.add(asst_msg)
     await db.flush()
 
+    try:
+        validated_matrix = GatekeeperG1G6.validate_and_sanitize(
+            query=request.query,
+            domain_scores={
+                "SYS": impact_matrix.sys,
+                "ECON": impact_matrix.econ,
+                "PSYCH": impact_matrix.psych,
+                "ECO": impact_matrix.eco,
+                "LAW": impact_matrix.law,
+                "SEC": impact_matrix.sec,
+                "PHYS": impact_matrix.phys,
+                "SOC": impact_matrix.soc,
+            },
+        )
+    except GatekeeperChainException as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"gate_id": exc.gate_id, "reason": exc.reason, "audit_hash": exc.audit_hash},
+        ) from exc
+
+    clean_scores = validated_matrix.sanitized_domain_scores
     metric_record = ImpactMatrixMetric(
         id=str(uuid.uuid4()),
         message_id=str(asst_msg.id),
         conversation_id=str(conv_id),
-        sys=impact_matrix.sys, econ=impact_matrix.econ, psych=impact_matrix.psych,
-        eco=impact_matrix.eco, law=impact_matrix.law, sec=impact_matrix.sec,
-        phys=impact_matrix.phys, soc=impact_matrix.soc,
+        sys=clean_scores["SYS"], econ=clean_scores["ECON"], psych=clean_scores["PSYCH"],
+        eco=clean_scores["ECO"], law=clean_scores["LAW"], sec=clean_scores["SEC"],
+        phys=clean_scores["PHYS"], soc=clean_scores["SOC"],
         composite_score=impact_matrix.composite_score, reasoning=impact_matrix.reasoning,
     )
     db.add(metric_record)

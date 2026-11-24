@@ -40,11 +40,13 @@ fun ChatStatusBanner(
     val systemEntropy by OmnisGeminiClient.systemEntropy.collectAsStateWithLifecycle()
     val modelLogs by OmnisGeminiClient.modelSwitchLog.collectAsStateWithLifecycle()
     val lastOnlineError by OmnisGeminiClient.lastOnlineError.collectAsStateWithLifecycle()
+    val breakerTelemetry by com.example.gateway.OmnisCircuitBreaker.telemetry.collectAsStateWithLifecycle()
 
     var showHelpDetail by remember { mutableStateOf(false) }
     var showCascadeDialog by remember { mutableStateOf(false) }
 
     val isTechnicalMode = userRole == com.example.auth.UserRole.ADMIN_OPERATOR || userExperienceMode == com.example.ui.UserExperienceMode.EXPERT
+    val isDegradedActive = lastOnlineError != null || breakerTelemetry.isDegraded
 
     if (showCascadeDialog && isTechnicalMode) {
         AlertDialog(
@@ -68,7 +70,7 @@ fun ChatStatusBanner(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Aktivní model: $activeModel",
+                        text = "Aktivní model: $activeModel | Breaker: ${breakerTelemetry.state.name}",
                         color = OmnisStyleSheet.Colors.SuccessEmerald,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
@@ -101,7 +103,10 @@ fun ChatStatusBanner(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showCascadeDialog = false }) {
+                TextButton(
+                    onClick = { showCascadeDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
                     Text("Zavřít", color = OmnisStyleSheet.Colors.CyanAccent)
                 }
             },
@@ -109,7 +114,7 @@ fun ChatStatusBanner(
         )
     }
 
-    if (lastOnlineError != null) {
+    if (isDegradedActive) {
         if (!isTechnicalMode) {
             // Čistý, přívětivý indikátor pro běžného uživatele bez technických detailů a kódů
             Surface(
@@ -128,7 +133,7 @@ fun ChatStatusBanner(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(OmnisStyleSheet.Colors.SuccessEmerald)
+                            .background(OmnisStyleSheet.Colors.WarningAmber)
                     )
                     Text(
                         text = "Kognitivní systém O.M.N.I.S. (Záložní režim aktivní)",
@@ -139,6 +144,22 @@ fun ChatStatusBanner(
                 }
             }
         } else {
+            val effectiveBannerText = buildString {
+                if (breakerTelemetry.isDegraded) {
+                    append("Circuit Breaker: ${breakerTelemetry.state.name}")
+                    breakerTelemetry.lastHttpCode?.let { append(" | HTTP $it") }
+                    if (breakerTelemetry.cooldownRemainingSeconds > 0L) {
+                        append(" | Cooldown ${breakerTelemetry.cooldownRemainingSeconds}s")
+                    }
+                    append(" | Selhání: ${breakerTelemetry.consecutiveFailures}")
+                    if (!lastOnlineError.isNullOrBlank()) append("\n")
+                }
+                if (!lastOnlineError.isNullOrBlank()) {
+                    append(formatErrorMessage(lastOnlineError ?: ""))
+                } else if (!breakerTelemetry.lastErrorReason.isNullOrBlank()) {
+                    append("\n${breakerTelemetry.lastErrorReason}")
+                }
+            }
             Surface(
                 modifier = modifier
                     .fillMaxWidth()
@@ -156,35 +177,57 @@ fun ChatStatusBanner(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
-                                contentDescription = null,
+                                contentDescription = "Stav záložního režimu",
                                 tint = OmnisStyleSheet.Colors.WarningAmber,
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "Deterministický Fallback aktivní",
+                                text = "Deterministický Fallback aktivní (${breakerTelemetry.state.name})",
                                 color = OmnisStyleSheet.Colors.WarningAmber,
                                 style = OmnisStyleSheet.Typography.badgeText
                             )
                         }
-                        TextButton(
-                            onClick = { showHelpDetail = !showHelpDetail },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = if (showHelpDetail) "Skrýt SOP" else "Jak aktivovat?",
-                                color = OmnisStyleSheet.Colors.CyanAccent,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (breakerTelemetry.isDegraded) {
+                                TextButton(
+                                    onClick = { com.example.gateway.OmnisCircuitBreaker.reset() },
+                                    modifier = Modifier
+                                        .heightIn(min = 48.dp)
+                                        .testTag("circuit_breaker_reset_button"),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "Reset",
+                                        color = OmnisStyleSheet.Colors.SuccessEmerald,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                            TextButton(
+                                onClick = { showHelpDetail = !showHelpDetail },
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("fallback_sop_toggle_button"),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = if (showHelpDetail) "Skrýt SOP" else "Diagnostika",
+                                    color = OmnisStyleSheet.Colors.CyanAccent,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
                         }
                     }
 
                     Text(
-                        text = formatErrorMessage(lastOnlineError ?: ""),
+                        text = effectiveBannerText,
                         color = OmnisStyleSheet.Colors.TextSecondary,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
@@ -219,7 +262,7 @@ fun ChatStatusBanner(
                             HorizontalDivider(color = OmnisStyleSheet.Colors.BorderMuted)
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "DETAILECH CHYBY (LOG SERVERU):",
+                                text = "DETAIL CHYBY & JISTIČE:",
                                 color = OmnisStyleSheet.Colors.WarningAmber,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
@@ -227,7 +270,7 @@ fun ChatStatusBanner(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = lastOnlineError ?: "",
+                                text = lastOnlineError ?: breakerTelemetry.lastErrorReason ?: "Breaker ${breakerTelemetry.state.name}",
                                 color = OmnisStyleSheet.Colors.TextMuted,
                                 fontSize = 9.sp,
                                 fontFamily = FontFamily.Monospace,

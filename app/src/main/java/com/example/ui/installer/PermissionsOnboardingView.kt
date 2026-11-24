@@ -120,7 +120,7 @@ fun PermissionsOnboardingView(
                     modifier = Modifier.size(20.dp)
                 )
                 Text(
-                    text = "Aplikace O.M.N.I.S. plně respektuje soukromí a zásady Google Play. Runtime oprávnění slouží výhradně pro OCR a notifikace.",
+                    text = "Aplikace O.M.N.I.S. plně respektuje soukromí a zásady Google Play. Runtime oprávnění slouží výhradně pro OCR kameru, hlasový vstup a notifikace; obrázky z galerie vybírá systémový Photo Picker bez plošných oprávnění.",
                     color = OmnisTextLight,
                     fontSize = 11.sp,
                     lineHeight = 15.sp

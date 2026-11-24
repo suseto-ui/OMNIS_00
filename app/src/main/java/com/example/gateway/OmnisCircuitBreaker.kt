@@ -6,15 +6,32 @@ import com.example.data.MemoryFragment
 import com.example.data.OmnisDatabase
 import com.example.data.OmnisRecord
 import com.example.telemetry.TelemetryEngine
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.max
 
 enum class CircuitState {
     CLOSED,    // Vše v pořádku, provoz směrován na Cloud / Gemini
     OPEN,      // Detekován výpadek / HTTP 429, provoz přepnut na offline Room simulaci
     HALF_OPEN  // Testovací režim pro obnovení spojení po vypršení cooldownu
+}
+
+data class CircuitBreakerTelemetry(
+    val state: CircuitState = CircuitState.CLOSED,
+    val consecutiveFailures: Int = 0,
+    val lastHttpCode: Int? = null,
+    val retryAfterSeconds: Long? = null,
+    val cooldownRemainingSeconds: Long = 0L,
+    val lastErrorReason: String? = null,
+    val lastUpdatedMs: Long = System.currentTimeMillis()
+) {
+    val isDegraded: Boolean
+        get() = state != CircuitState.CLOSED
 }
 
 data class OfflineSimulationResult(
@@ -27,24 +44,53 @@ data class OfflineSimulationResult(
 /**
  * 3-fázový Circuit Breaker pro garantovanou 100% dostupnost bez výpadků.
  * Při HTTP 429 nebo výpadku sítě přepne na lokální deterministickou simulaci
- * nad šifrovanou Room SQLite v18 s označením [OFFLINE SIMULACE].
+ * nad šifrovanou Room SQLite v19 s označením [OFFLINE SIMULACE].
  */
 object OmnisCircuitBreaker {
 
     private const val TAG = "OmnisCircuitBreaker"
     private const val FAILURE_THRESHOLD = 2           // 2 selhání za sebou přepnou na OPEN
-    private const val COOLDOWN_PERIOD_MS = 15_000L    // 15 sekund cooldown před HALF_OPEN
+    private const val COOLDOWN_PERIOD_MS = 15_000L    // 15 sekund výchozí cooldown před HALF_OPEN
+    private const val MIN_RETRY_AFTER_SEC = 5L
+    private const val MAX_RETRY_AFTER_SEC = 300L
     const val SYNC_BATCH_SIZE = 250                  // Dávková synchronizace po 250 záznamech
 
     private val state = AtomicReference(CircuitState.CLOSED)
     private val consecutiveFailures = AtomicInteger(0)
     private val lastStateChangeTimestamp = AtomicLong(System.currentTimeMillis())
+    private val activeCooldownMs = AtomicLong(COOLDOWN_PERIOD_MS)
+    private val lastHttpCode = AtomicReference<Int?>(null)
+    private val lastRetryAfterSec = AtomicReference<Long?>(null)
+    private val lastErrorReason = AtomicReference<String?>(null)
+
+    private val _telemetry = MutableStateFlow(CircuitBreakerTelemetry())
+    val telemetry: StateFlow<CircuitBreakerTelemetry> = _telemetry.asStateFlow()
+
+    private fun publishTelemetry() {
+        val now = System.currentTimeMillis()
+        val currentState = state.get()
+        val remainingSec = if (currentState == CircuitState.OPEN) {
+            val elapsed = now - lastStateChangeTimestamp.get()
+            max(0L, (activeCooldownMs.get() - elapsed + 999L) / 1000L)
+        } else {
+            0L
+        }
+        _telemetry.value = CircuitBreakerTelemetry(
+            state = currentState,
+            consecutiveFailures = consecutiveFailures.get(),
+            lastHttpCode = lastHttpCode.get(),
+            retryAfterSeconds = lastRetryAfterSec.get(),
+            cooldownRemainingSeconds = remainingSec,
+            lastErrorReason = lastErrorReason.get(),
+            lastUpdatedMs = now
+        )
+    }
 
     fun getCurrentState(): CircuitState {
         val current = state.get()
         if (current == CircuitState.OPEN) {
             val now = System.currentTimeMillis()
-            if (now - lastStateChangeTimestamp.get() > COOLDOWN_PERIOD_MS) {
+            if (now - lastStateChangeTimestamp.get() > activeCooldownMs.get()) {
                 if (state.compareAndSet(CircuitState.OPEN, CircuitState.HALF_OPEN)) {
                     lastStateChangeTimestamp.set(now)
                     TelemetryEngine.log(
@@ -55,11 +101,16 @@ object OmnisCircuitBreaker {
                 }
             }
         }
+        publishTelemetry()
         return state.get()
     }
 
     fun reportSuccess() {
         consecutiveFailures.set(0)
+        lastHttpCode.set(null)
+        lastRetryAfterSec.set(null)
+        lastErrorReason.set(null)
+        activeCooldownMs.set(COOLDOWN_PERIOD_MS)
         if (state.get() != CircuitState.CLOSED) {
             state.set(CircuitState.CLOSED)
             lastStateChangeTimestamp.set(System.currentTimeMillis())
@@ -69,24 +120,62 @@ object OmnisCircuitBreaker {
                 message = "Circuit Breaker OBNOVEN -> CLOSED (cloudové služby jsou plně dostupné)."
             )
         }
+        publishTelemetry()
     }
 
-    fun reportFailure(httpCode: Int, errorMsg: String) {
+    @JvmOverloads
+    fun reportFailure(httpCode: Int, errorMsg: String, retryAfterSeconds: Long? = null) {
         val fails = consecutiveFailures.incrementAndGet()
+        lastHttpCode.set(httpCode)
+        lastErrorReason.set(errorMsg.take(240))
         Log.w(TAG, "Zaznamenáno selhání volání: HTTP $httpCode ($errorMsg), celkem: $fails")
 
+        val clampedRetrySec = retryAfterSeconds?.coerceIn(MIN_RETRY_AFTER_SEC, MAX_RETRY_AFTER_SEC)
+        if (clampedRetrySec != null) {
+            lastRetryAfterSec.set(clampedRetrySec)
+            activeCooldownMs.set(clampedRetrySec * 1000L)
+        } else if (httpCode == 429) {
+            lastRetryAfterSec.set(COOLDOWN_PERIOD_MS / 1000L)
+            activeCooldownMs.set(COOLDOWN_PERIOD_MS)
+        }
+
         if (httpCode == 429 || fails >= FAILURE_THRESHOLD) {
-            if (state.get() != CircuitState.OPEN) {
-                state.set(CircuitState.OPEN)
-                lastStateChangeTimestamp.set(System.currentTimeMillis())
+            val wasOpen = state.get() == CircuitState.OPEN
+            state.set(CircuitState.OPEN)
+            lastStateChangeTimestamp.set(System.currentTimeMillis())
+            if (!wasOpen || httpCode == 429) {
                 TelemetryEngine.log(
-                    type = "SECURITY",
+                    type = if (httpCode == 429) "WARNING" else "SECURITY",
                     component = "CIRCUIT_BREAKER",
                     message = "Circuit Breaker AKTIVOVÁN -> OPEN (přepnuto na offline simulaci). Důvod: HTTP $httpCode",
-                    metadata = "{\"failures\":$fails,\"http_code\":$httpCode,\"error\":\"$errorMsg\"}"
+                    metadata = "{\"failures\":$fails,\"http_code\":$httpCode,\"cooldown_s\":${activeCooldownMs.get() / 1000L}}"
                 )
             }
+        } else {
+            TelemetryEngine.log(
+                type = "WARNING",
+                component = "CIRCUIT_BREAKER",
+                message = "Zaznamenáno selhání LLM uzlu (HTTP $httpCode, pokus $fails/$FAILURE_THRESHOLD).",
+                metadata = "{\"failures\":$fails,\"http_code\":$httpCode}"
+            )
         }
+        publishTelemetry()
+    }
+
+    fun reset() {
+        consecutiveFailures.set(0)
+        lastHttpCode.set(null)
+        lastRetryAfterSec.set(null)
+        lastErrorReason.set(null)
+        activeCooldownMs.set(COOLDOWN_PERIOD_MS)
+        state.set(CircuitState.CLOSED)
+        lastStateChangeTimestamp.set(System.currentTimeMillis())
+        TelemetryEngine.log(
+            type = "INFO",
+            component = "CIRCUIT_BREAKER",
+            message = "Circuit Breaker resetován operátorem -> CLOSED."
+        )
+        publishTelemetry()
     }
 
     /**

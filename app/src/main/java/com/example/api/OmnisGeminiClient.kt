@@ -304,7 +304,8 @@ object OmnisGeminiClient {
             }
         }
 
-        fun markFailure(key: String, code: Int, reason: String) {
+        @JvmOverloads
+        fun markFailure(key: String, code: Int, reason: String, retryAfterSeconds: Long? = null) {
             synchronized(entries) {
                 val entry = entries.find { it.key == key } ?: return
                 entry.failCount++
@@ -318,9 +319,15 @@ object OmnisGeminiClient {
                 val logMsg = "🔄 Klíč ${entry.name} (${entry.masked}) selhal s kódem $code ($reason). Rotuji okamžitě na další klíč..."
                 Log.w(TAG, logMsg)
                 _keyPoolLog.value = (_keyPoolLog.value + logMsg).takeLast(25)
+                TelemetryEngine.log(
+                    type = if (code == 429) "WARNING" else "ERROR",
+                    component = "CIRCUIT_BREAKER",
+                    message = "KeyPool selhání HTTP $code pro ${entry.name}",
+                    metadata = "{\"http_code\":$code,\"retry_after_s\":${retryAfterSeconds ?: 0}}"
+                )
                 GeminiKeyPool.reportKeyFailure(code)
                 if (code == 429 || code == 503 || code == 502) {
-                    com.example.gateway.OmnisCircuitBreaker.reportFailure(code, reason)
+                    com.example.gateway.OmnisCircuitBreaker.reportFailure(code, reason, retryAfterSeconds)
                 }
             }
         }
@@ -777,6 +784,7 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
             var successfulKeyEntry: KeyPool.KeyEntry? = null
             var lastErrCode = 0
             var lastErrBody = ""
+            var lastRetryAfterSec: Long? = null
 
             keyLoop@ for (keyEntry in orderedKeys) {
                 val apiKey = keyEntry.key
@@ -798,9 +806,10 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
                         } else {
                             lastErrCode = response.code
                             lastErrBody = response.body?.string() ?: ""
+                            lastRetryAfterSec = response.header("Retry-After")?.trim()?.toLongOrNull()
                             Log.w(TAG, "Model $candidateModel s klíčem ${keyEntry.name} selhal s HTTP $lastErrCode ($lastErrBody).")
                             if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
-                                KeyPool.markFailure(apiKey, response.code, lastErrBody)
+                                KeyPool.markFailure(apiKey, response.code, lastErrBody, lastRetryAfterSec)
                                 break // Okamžitá rotace na další klíč v kruhovém fondu
                             }
                         }
@@ -819,7 +828,8 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
                 circuitBreaker.recordFailure()
                 com.example.gateway.OmnisCircuitBreaker.reportFailure(
                     httpCode = if (lastErrCode > 0) lastErrCode else 503,
-                    errorMsg = lastErrBody.ifBlank { errMsg }
+                    errorMsg = lastErrBody.ifBlank { errMsg },
+                    retryAfterSeconds = lastRetryAfterSec
                 )
                 val offlineCtx = appContext
                 if (com.example.gateway.OmnisCircuitBreaker.getCurrentState() == com.example.gateway.CircuitState.OPEN && offlineCtx != null) {
@@ -1001,6 +1011,36 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
                 isCircuitBreakerTripped = false,
                 executiveOverride = executiveOverride
             )
+
+            val outputScoresUpper = mapOf(
+                "SYS" to vSys, "ECON" to vEcon, "PSYCH" to vPsych, "ECO" to vEco,
+                "LAW" to vLaw, "SEC" to vSec, "PHYS" to vPhys, "SOC" to vSoc
+            )
+            val outputGateVerdict = com.example.gateway.RefusalLadderEngine.evaluateOutput(
+                query = query,
+                outputText = answer,
+                outputDomainScores = outputScoresUpper
+            )
+            if (!outputGateVerdict.isApproved && !executiveOverride) {
+                val gate = outputGateVerdict.refusingGate
+                TelemetryEngine.log(
+                    type = "SECURITY",
+                    component = "OUTPUT_REFUSAL_LADDER",
+                    message = "Výstup LLM zablokován na bráně ${gate?.gateId?.code}: ${gate?.reason}"
+                )
+                return SynthesisResult(
+                    answer = "⛔ **EXPLICIT GROUNDED REFUSAL NA VÝSTUPU (${gate?.gateId?.code ?: "G1-G6"})**\n\n" +
+                        "${gate?.reason ?: "Výstup neprošel post-generační kontrolou G1–G6."}\n\n" +
+                        "Normativní opora: ${gate?.regulatoryNorm ?: "EU AI Act / NIS2 / AKGE-8D"}",
+                    cognitiveProcess = "Dual-Gate Post-Generation Refusal (${gate?.gateId?.code})",
+                    followUpQuestions = listOf("Upřesnit zadání?", "Zobrazit audit G1–G6?"),
+                    valSys = 0.6f, valEcon = 0.5f, valPsych = 0.5f, valEco = 0.5f,
+                    valLaw = 0.2f, valSec = 0.2f, valPhys = 0.5f, valSoc = 0.5f,
+                    composite = 0.25f,
+                    defenseTier = "BLOCKED",
+                    defenseNotes = gate?.reason ?: "Output Gate Refusal"
+                )
+            }
 
             circuitBreaker.recordSuccess()
             _lastOnlineError.value = null

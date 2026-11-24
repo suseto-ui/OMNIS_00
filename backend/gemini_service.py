@@ -17,6 +17,7 @@ import base64
 from .schemas import ImpactMatrixScores, TokenUsageStats, ChatMessage
 from .omnis_pipeline import assemble_omnis_cognitive_cycle
 from .token_service import token_telemetry_service
+from .gateway import GatekeeperChainException, GatekeeperG1G6
 
 logger = logging.getLogger("omnis.gemini")
 logger.setLevel(logging.INFO)
@@ -610,6 +611,15 @@ class GeminiCognitiveService:
                                 total_tokens=p_tokens + c_tokens,
                                 cost_usd=rec.cost_usd,
                             )
+                            validated_matrix = GatekeeperG1G6.validate_and_sanitize(
+                                query=query,
+                                domain_scores={
+                                    k.upper(): matrix_dict.get(k, 0.5)
+                                    for k in ("sys", "econ", "psych", "eco", "law", "sec", "phys", "soc")
+                                },
+                            )
+                            for k, val in validated_matrix.sanitized_domain_scores.items():
+                                matrix_dict[k.lower()] = val
                             return (
                                 assembled.formatted_answer,
                                 assembled.cognitive_process,
@@ -620,6 +630,8 @@ class GeminiCognitiveService:
                                 adv_score,
                                 flagged_issues,
                             )
+                    except GatekeeperChainException:
+                        raise
                     except Exception as exc:
                         exc_str = str(exc).lower()
                         last_error_detail = str(exc)

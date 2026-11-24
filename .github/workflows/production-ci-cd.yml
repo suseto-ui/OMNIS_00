@@ -121,6 +121,13 @@ jobs:
         run: |
           echo "${{ secrets.OMNIS_KEYSTORE_BASE64 }}" | base64 --decode > "${{ runner.temp }}/omnis-release.jks"
           echo "OMNIS_KEYSTORE_FILE=${{ runner.temp }}/omnis-release.jks" >> "$GITHUB_ENV"
+          echo "OMNIS_SIGNING_STATUS=SIGNED" >> "$GITHUB_ENV"
+
+      - name: Warn on Missing Release Keystore (Unsigned R8 Provenance)
+        if: ${{ secrets.OMNIS_KEYSTORE_BASE64 == '' }}
+        run: |
+          echo "::warning::OMNIS_KEYSTORE_BASE64 is missing — emitting UNSIGNED R8/ProGuard release APK & AAB (OMNIS_SIGNING_STATUS=UNSIGNED_R8_ONLY)."
+          echo "OMNIS_SIGNING_STATUS=UNSIGNED_R8_ONLY" >> "$GITHUB_ENV"
 
       - name: Build Minified Release APK & AAB
         env:
@@ -136,11 +143,19 @@ jobs:
             gradle :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
           fi
 
-      - name: Generate Release Artifacts & SHA256SUMS.txt
+      - name: Generate Release Artifacts, Provenance & SHA256SUMS.txt
         run: |
           mkdir -p release-artifacts
           find app/build/outputs/apk/release -name "*.apk" -exec cp {} release-artifacts/ \;
           find app/build/outputs/bundle/release -name "*.aab" -exec cp {} release-artifacts/ \;
+          SIGNING_STATUS="${OMNIS_SIGNING_STATUS:-UNSIGNED_R8_ONLY}"
+          {
+            echo "SIGNING_STATUS=${SIGNING_STATUS}"
+            echo "R8_MINIFICATION=ENABLED"
+            echo "BUILT_AT_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "KEYSTORE_PRESENT=$( [ "${SIGNING_STATUS}" = "SIGNED" ] && echo "true" || echo "false" )"
+          } > release-artifacts/SIGNING_STATUS.txt
+          cat release-artifacts/SIGNING_STATUS.txt
           (cd release-artifacts && sha256sum * > SHA256SUMS.txt)
           cat release-artifacts/SHA256SUMS.txt
 

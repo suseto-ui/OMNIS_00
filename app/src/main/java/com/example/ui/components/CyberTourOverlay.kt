@@ -38,42 +38,42 @@ data class TourStep(
 private val KYBER_TOUR_STEPS = listOf(
     TourStep(
         stepIndex = 1,
-        title = "Kognitivní Injekce & Pre-flight",
-        tag = "CHAT / THESIS ENGINE",
-        description = "Zadávání systémových dotazů a tezí. Pre-flight filtr vyhodnocuje sémantickou čistotu (D1), entropii (D2) a zabraňuje halucinacím před odesláním do modelu.",
-        technicalNote = "G1-G2 Bezpečnostní brána • Prahová shoda 0.75 • Proof of Necessity",
+        title = "Gatekeeper G1–G6 & Dual-Gate",
+        tag = "PRE-FLIGHT & POST-GEN SHIELD",
+        description = "Sekvenční vrstva G1–G6 sanitizuje dotaz, maskuje PII a hlídá NaN či nulové vektory ještě před vstupem do Matice dopadů. Stejná 6-bránová kontrola ověřuje i vygenerovanou odpověď modelu.",
+        technicalNote = "GatekeeperChainException • Dual-Gate G1–G6 • Shannon S < 2.08",
         iconEmoji = "⚡"
     ),
     TourStep(
         stepIndex = 2,
         title = "4-Agentní Oponentní Dialektika",
-        tag = "DIALECTIC ENGINE 30s",
-        description = "Architekt, Skeptik, Regulátor a Inženýr vedou nelítostnou oponentní debatu. Výsledkem je věcně oponované, deterministické finální rozhodnutí.",
-        technicalNote = "Sekundární a terciární kauzální smyčky • Stresové testování Černých labutí",
+        tag = "DIALECTIC ENGINE & DEBATE",
+        description = "Architekt, Skeptik, Regulátor a Inženýr vedou strukturovanou oponentní debatu s kaskádovým stresovým testováním. Výsledkem je oponované a deterministické rozhodnutí.",
+        technicalNote = "Kauzální smyčky • Stresové testování Černých labutí • Q_omnis",
         iconEmoji = "⚖️"
     ),
     TourStep(
         stepIndex = 3,
         title = "8D Tenzorová Matice & Octagon",
         tag = "AKGE-8D INFERENCE",
-        description = "Multidimenzionální vizualizace 8 provozních os: D1 Záměr, D2 Entropie, D3 Čas, D4 Zdroje, D5 Riziko, D6 Konsenzus, D7 Oprávnění, D8 Predikční horizont.",
-        technicalNote = "Tenzorový vektor D1-D8 • Interaktivní radarový visualizer",
+        description = "Multidimenzionální vizualizace 8 domén: SYS (Systém), ECON (Ekonomie), PSYCH (Kognice), ECO (Ekologie), LAW (Právo), SEC (Bezpečnost), PHYS (Fyzika) a SOC (Společnost).",
+        technicalNote = "28-párový korelační tenzor • L2 64D normalizace • Radarový visualizer",
         iconEmoji = "🔮"
     ),
     TourStep(
         stepIndex = 4,
         title = "Kauzální Simulátor do(X)",
         tag = "PEARL CAUSAL ENGINE",
-        description = "Modelování systémových dopadů v reálném čase. Pomocí operátoru do(X) simulujete kaskádové efekty na stav celého ekosystému a eliminujete skryté zátěže.",
-        technicalNote = "Kauzální graf CSR • Vyhodnocení P(Y | do(X=x)) • NIS2 Readiness",
+        description = "Modelování systémových dopadů v reálném čase. Operátorem do(X) simulujete intervence v CSR grafu, izolujete přetížené uzly nad perkolačním prahem a sledujete dopad na celý systém.",
+        technicalNote = "CSR graf • Judea Pearl P(Y | do(X=x)) • Perkolace p_c >= 0.38",
         iconEmoji = "🌐"
     ),
     TourStep(
         stepIndex = 5,
-        title = "Kognitivní Reputace & Odznaky",
-        tag = "AUDIT HASH & REPUTATION",
-        description = "Za každou dialektickou syntézu, kaskádovou analýzu a prověření Černé labutě získáváte kryptograficky ověřitelné invariantní odznaky a zvyšujete svůj KQP kredit.",
-        technicalNote = "CommitmentHash = HMAC-SHA256 Hash-Chain • Odznaky v reálném čase",
+        title = "Auditní Řetězec & Odolnost",
+        tag = "ZK LEDGER & CIRCUIT BREAKER",
+        description = "Každá brána G1–G6 i operace zapisují neměnný auditní otisk. Při HTTP 429 nebo výpadku API přebírá provoz adaptivní Circuit Breaker s řízeným cooldownem a bezpečným fallbackem.",
+        technicalNote = "HMAC-SHA256 Hash-Chain • Room v19 SQLCipher • Retry-After [5–300 s]",
         iconEmoji = "🛡️"
     )
 )

@@ -14,6 +14,7 @@ from backend.csr_graph import (
     ProofOfNecessityLog,
     _sanitize_unit_float,
     compute_advanced_metrics,
+    detect_corrupt_tensor_inputs,
     generate_proof_of_necessity,
     normalize_l2_64d,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "_sanitize_unit_float",
     "compute_advanced_metrics",
     "compute_q_omnis",
+    "detect_corrupt_tensor_inputs",
     "generate_proof_of_necessity",
     "get_age_graph_repository",
     "normalize_l2_64d",

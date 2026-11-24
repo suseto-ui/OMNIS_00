@@ -347,3 +347,59 @@ class CryptographicAuditCommitment(BaseModel):
 
 # Zpětná kompatibilita názvu pro stávající volající moduly
 ZkAuditCommitment = CryptographicAuditCommitment
+
+
+def evaluate_output_gates(
+    output_text: str,
+    shannon_entropy: float,
+    domain_scores: Optional[Dict[str, Any]] = None,
+    output_embedding: Optional[List[Any]] = None,
+    g3_causal_ok: bool = True,
+) -> GateEvaluationResult:
+    """
+    Post-generation Dual-Gate G1-G6 validátor nad vygenerovaným výstupem LLM a výstupním tenzorem.
+    """
+    from backend.csr_graph import detect_corrupt_tensor_inputs
+
+    clean_out = (output_text or "").strip()
+    lower = clean_out.lower()
+
+    g1_leak = any(
+        tok in lower
+        for tok in ("<scratchpad>", "<system_identity>", "<core_invariants>", "ignore previous instructions")
+    )
+    g1_ok = len(clean_out) >= 3 and not g1_leak
+
+    g2_ok = not any(
+        bad in lower
+        for bad in ("social scoring", "sociální bodování občanů", "subliminal manipulation", "podprahová manipulace")
+    )
+    g3_ok = bool(g3_causal_ok) and not any(
+        bad in lower
+        for bad in ("ransomware", "malware", "exploit zero-day", "ddos attack tool", "bypass authentication token")
+    )
+    g4_ok = not any(
+        bad in lower
+        for bad in ("disable zero trust", "bypass rbac audit", "vygeneruj fiktivní soudní rozhodnutí")
+    )
+
+    corrupt = detect_corrupt_tensor_inputs(domain_scores=domain_scores, query_embedding=output_embedding)
+    g5_ok = not corrupt["non_finite_domains"]
+    entropy_finite = isinstance(shannon_entropy, (int, float)) and math.isfinite(float(shannon_entropy))
+    g6_ok = entropy_finite and float(shannon_entropy) < 2.08 and not corrupt["has_corrupt_input"]
+
+    refusal_reason = corrupt["reason"] if corrupt["has_corrupt_input"] else None
+    if g1_leak and refusal_reason is None:
+        refusal_reason = "Explicit Grounded Refusal na bráně G1 (Výstup): Detekován únik interního scratchpadu/direktiv."
+
+    return GateEvaluationResult(
+        g1_entry_point=g1_ok,
+        g2_concept_coupling=g2_ok,
+        g3_causal_path=g3_ok,
+        g4_quotable_evidence=g4_ok,
+        g5_retraction_integrity=g5_ok,
+        g6_entailment_entropy=g6_ok,
+        shannon_entropy=float(shannon_entropy) if entropy_finite else 2.08,
+        refusal_reason=refusal_reason,
+    )
+

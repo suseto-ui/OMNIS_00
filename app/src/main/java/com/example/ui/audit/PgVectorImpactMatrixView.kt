@@ -34,9 +34,22 @@ fun PgVectorImpactMatrixView(
 ) {
     var queryInput by remember { mutableStateOf("Harmonizace energetické infrastruktury a právního rámu EU AI Act") }
 
-    val fivePhaseResult = remember(queryInput) {
-        OmnisFivePhaseExecutor.executeFivePhasePipeline(queryInput)
+    val pipelineOutcome = remember(queryInput) {
+        try {
+            OmnisFivePhaseExecutor.executeFivePhasePipeline(queryInput) to null
+        } catch (ex: com.example.gateway.GatekeeperChainException) {
+            null to ex
+        }
     }
+    val fivePhaseResult = pipelineOutcome.first ?: com.example.engine.FivePhaseExecutionResult(
+        query = queryInput,
+        currentPhase = "GATEKEEPER_ABORTED_${pipelineOutcome.second?.gateId?.code ?: "G1"}",
+        holomorphicCollectionSummary = pipelineOutcome.second?.message ?: "Řetězec přerušen.",
+        semanticDeconstructionSummary = "Zastaveno vrstvou Gatekeeper G1-G6.",
+        transdisciplinaryBridgeSummary = "Vstup do Matice dopadů zamítnut.",
+        impactMatrix = com.example.engine.ImpactMatrixResult(0f, 0f, 0f, 0f, 0f),
+        teleologicalAutopoiesisCode = "AUDIT_HASH: ${pipelineOutcome.second?.auditHash ?: "N/A"}"
+    )
 
     val sigmaConfrontation = remember(queryInput, fivePhaseResult) {
         SigmaOmegaRedTeamingEngine.runSigmaConfrontation(queryInput, fivePhaseResult.teleologicalAutopoiesisCode)
@@ -126,7 +139,7 @@ fun PgVectorImpactMatrixView(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Room v18 & ElectricSQL:", color = OmnisTextMuted, fontSize = 10.sp)
+                                Text("Room v19 & ElectricSQL:", color = OmnisTextMuted, fontSize = 10.sp)
                                 Text("Šifrovaná Edge & Sync vrstva", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                             Column(modifier = Modifier.weight(1f)) {

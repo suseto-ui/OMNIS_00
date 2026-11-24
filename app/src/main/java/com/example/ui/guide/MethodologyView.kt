@@ -186,15 +186,22 @@ private fun SigmaMethodologySection(userRole: UserRole) {
 
         SigmaCard(
             title = "DETERMINISMUS",
-            description = "Automatizovaná verifikace výstupů proti systémovým invariantům.",
+            description = "Automatizovaná verifikace vstupů i výstupů (Dual-Gate) proti systémovým invariantům.",
             icon = Icons.Default.VerifiedUser,
             color = OmnisCyan
+        )
+
+        SigmaCard(
+            title = "GATEKEEPER G1–G6 (PŘED MATICÍ)",
+            description = "Sekvenční vrstva G1–G6 před 8D maticí dopadů: každá brána zapisuje do auditního logu a při NaN, Inf nebo nulovém vektoru řetězec okamžitě přeruší (GatekeeperChainException).",
+            icon = Icons.Default.Security,
+            color = OmnisEmerald
         )
 
         if (userRole == UserRole.ADMIN_OPERATOR) {
             SigmaCard(
                 title = "SYSTÉMOVÝ JISTIČ (BREAKER)",
-                description = "Možnost okamžitého odpojení kognitivních procesů při detekci kritické nestability nebo driftu.",
+                description = "Ochrana před přetížením a kaskádovým selháním včetně automatického HTTP 429 Retry-After cooldownu (5–300 s) a stavu HALF-OPEN.",
                 icon = Icons.Default.ElectricBolt,
                 color = Color.Red
             )
@@ -202,7 +209,7 @@ private fun SigmaMethodologySection(userRole: UserRole) {
 
         SigmaCard(
             title = "8D MATICE DOPADU",
-            description = "Multidimenzionální hodnocení: Systém, Ekonomie, Kognice, Ekologie, Právo, Bezpečnost, Fyzika, Společnost.",
+            description = "Multidimenzionální hodnocení v osách SYS, ECON, PSYCH, ECO, LAW, SEC, PHYS, SOC (Systém, Ekonomie, Kognice, Ekologie, Právo, Bezpečnost, Fyzika, Společnost).",
             icon = Icons.Default.Layers,
             color = OmnisViolet
         )
@@ -240,19 +247,19 @@ private fun FullModulesManualSection(userRole: UserRole) {
         SectionHeader(if (userRole == UserRole.ADMIN_OPERATOR) "SYSTÉMOVÁ PŘÍRUČKA MODULŮ (ADMIN / OPERÁTOR)" else "UŽIVATELSKÁ PŘÍRUČKA MODULŮ")
 
         ExpandableManualModule(
-            title = "1. Operační Kokpit & Sémantická Brána",
+            title = "1. Operační Kokpit, Sémantická Brána & Gatekeeper G1–G6",
             icon = Icons.AutoMirrored.Filled.Chat,
             color = OmnisCyan,
-            summary = "Primární rozhraní kognitivní interakce s reaktivní sémantickou kontrolou a ochranou vstupu.",
+            summary = "Primární rozhraní kognitivní interakce s Dual-Gate ochranou vstupu i výstupu a sekvenční vrstvou Gatekeeper G1–G6.",
             details = if (userRole == UserRole.ADMIN_OPERATOR) listOf(
-                "Sémantická Brána (Prompt Gateway): Zachytává nízkokvalitní nebo nestrukturované prompty. Povyšuje vstup na standard [Doména] + [Akce] + [Kritérium] a při nejednoznačnosti nabízí modální review s interaktivním editorem.",
-                "PromptGuideTooltip: Dynamická nápověda pro operátory i uživatele reagující na zadání prvních znaků.",
-                "Multimodální OCR & STT: Přímé zpracování obrazových příloh, dokumentů a hlasového vstupu s automatickým předzpracováním.",
-                "Autorizace Záznamů: Admin má exkluzivní oprávnění ručně schvalovat dotazy pozastavené bezpečnostním perimetrem."
+                "Sémantická Brána & Dual-Gate G1–G6: Kontroluje vstupní dotaz i vygenerovanou odpověď, povyšuje nejasné prompty na standard [Doména] + [Akce] + [Kritérium] a při nedostupnosti sítě přepíná na lokální fallback.",
+                "Gatekeeper G1–G6 před Maticí Dopadů: Postupně validuje a sanitizuje data přes všech 6 bran (G1–G6), každou operaci zaznamenává do auditního systému a při NaN, Inf nebo nulovém vektoru řetězec přeruší výjimkou GatekeeperChainException.",
+                "Multimodální Photo Picker, OCR & STT: Bezpečný výběr médií přes Android Photo Picker (bez širokých oprávnění úložiště), OCR dokumentů a hlasové diktování.",
+                "Stavový Banner & Autorizace: ChatStatusBanner zobrazuje přesný cooldown při HTTP 429 (5–300 s); admin může v kontextu autorizovat pozastavené záznamy."
             ) else listOf(
-                "Sémantický Chat: Zadávejte strukturované dotazy podle vzoru [Doména] + [Akce] + [Kritérium].",
-                "Multimodalita & OCR: Analýza dokumentů a obrázků bez nutnosti manuálního přepisování.",
-                "Hlasový Vstup: Diktování zadání v reálném čase."
+                "Sémantický Chat & Dual-Gate: Zadávejte strukturované dotazy podle vzoru [Doména] + [Akce] + [Kritérium]; vstup i výstup hlídá štít Gatekeeper G1–G6.",
+                "Photo Picker, OCR & Hlas: Obrázky vybíráte bezpečně přes systémový Photo Picker bez udělování oprávnění ke všem souborům, k dispozici je i kamera a diktování.",
+                "Stav Sítě & Degraded Režim: Při přetížení (HTTP 429) zobrazí horní banner dobu čekání a automaticky aktivuje bezpečnou offline záložní větev."
             )
         )
 
@@ -270,14 +277,14 @@ private fun FullModulesManualSection(userRole: UserRole) {
             )
 
             ExpandableManualModule(
-                title = "3. Reaktivní Akční Operativní Panel",
+                title = "3. Reaktivní Akční Panel & Produkční Audit",
                 icon = Icons.Default.PlayCircle,
                 color = OmnisEmerald,
-                summary = "Přímá exekuce nízkoúrovňových systémových operací a servisních payloadů nad jádrem O.M.N.I.S.",
+                summary = "Exekuce servisních operací nad jádrem O.M.N.I.S. a kompletní dohled v tabech Produkční Audit a Tensor Oversight.",
                 details = listOf(
-                    "Spouštění ActionPayload: Vyvolání diagnostických skriptů, rekalibrace tenzorů a databázových operací.",
-                    "Asynchronní Exekuce: Monitorování průběhu v reálném čase s indikátorem stavu a výpisem výsledků ActionExecutionResult.",
-                    "Bezpečnostní Zámek: Striktní Zero-Trust ověření identity před každým spuštěním operace."
+                    "Spouštění ActionPayload: Vyvolání diagnostických skriptů, rekalibrace tenzorů a údržba databáze (včetně pročištění starších záznamů).",
+                    "Tensor Oversight & Produkční Audit: Přehled integrity 8D tenzorů, průchodů branami G1–G6 a kontrola kvality výstupů.",
+                    "Bezpečnostní Zámek: Striktní Zero-Trust ověření identity a zápis každého zásahu do append-only auditního řetězce."
                 )
             )
 
@@ -285,23 +292,23 @@ private fun FullModulesManualSection(userRole: UserRole) {
                 title = "4. Admin Hub & 8D Tenzorová Matice",
                 icon = Icons.Default.SettingsSuggest,
                 color = OmnisAmber,
-                summary = "Centrální řízení stability kognitivního systému a orchestrace 8 dimenzí dopadu.",
+                summary = "Centrální řízení stability kognitivního systému a orchestrace 8 dimenzí dopadu chráněná branami G1–G6.",
                 details = listOf(
-                    "8D Matice Dopadu: Řízení vah dimenzí (Systém, Ekonomie, Kognice, Ekologie, Právo, Bezpečnost, Fyzika, Společnost).",
-                    "Krizové Řízení: Výpočet koherence a predikce nestability ekosystému v reálném čase.",
-                    "Orchestrace Tenzorů: Úprava váhových vektorů ovlivňujících syntézu odpovědí modelu."
+                    "8D Matice Dopadu: Řízení vah dimenzí SYS, ECON, PSYCH, ECO, LAW, SEC, PHYS, SOC po průchodu vrstvou Gatekeeper G1–G6.",
+                    "Krizové Řízení: Výpočet koherence, kauzální simulace do(X) a predikce nestability ekosystému v reálném čase.",
+                    "Orchestrace Tenzorů: Úprava váhových vektorů a kontrola integrity lokální DB vs. PostgreSQL 17 / ElectricSQL."
                 )
             )
 
             ExpandableManualModule(
-                title = "5. Circuit Breaker (Systémový Jistič)",
+                title = "5. Circuit Breaker (Systémový Jistič & HTTP 429)",
                 icon = Icons.Default.ElectricBolt,
                 color = Color(0xFFEF4444),
-                summary = "Fail-safe mechanismus chránící systém před kaskádovým selháním a přetížením API.",
+                summary = "Fail-safe mechanismus chránící klientskou i serverovou LLM kaskádu před kaskádovým selháním a rate-limity.",
                 details = listOf(
-                    "Stavový Automat: CLOSED (normální provoz) -> OPEN (odpojení po 3 po sobě jdoucích selháních) -> HALF-OPEN (ověřovací provoz).",
-                    "Manuální Shození (Trip): Operátor může okamžitě odpojit kognitivní engine při detekci nestability.",
-                    "Autorizovaný Reset: Bezpečné obnovení provozu po odstranění příčiny incidentu."
+                    "Stavový Automat: CLOSED (normální provoz) -> OPEN (odpojení při opakovaném selhání nebo HTTP 429) -> HALF-OPEN (ověřovací sonda).",
+                    "HTTP 429 Retry-After Cooldown: Jistič respektuje hlavičku Retry-After v bezpečném rozmezí 5–300 s a informuje uživatele přes ChatStatusBanner.",
+                    "Manuální Shození & Reset: Operátor může jistič okamžitě shodit nebo autorizovaně resetovat po stabilizaci backendu."
                 )
             )
 
@@ -309,65 +316,65 @@ private fun FullModulesManualSection(userRole: UserRole) {
                 title = "6. Správa Kognitivní Paměti & Vektorové Fragmenty",
                 icon = Icons.Default.Memory,
                 color = OmnisCyan,
-                summary = "Architektura pro dlouhodobé ukládání a konsolidaci kognitivního kontextu.",
+                summary = "Architektura pro dlouhodobé ukládání a 64D sémantické vyhledávání kognitivního kontextu.",
                 details = listOf(
-                    "MemoryFragment Engine: Izolované fragmenty paměti vázané na specifické kognitivní domény.",
+                    "64D Vektorové Úložiště: L2-normalizované fragmenty paměti v lokální tabulce omnis_local_vectors_64d a PostgreSQL pgvector.",
                     "Konsolidace Paměti: Spouštění syntézy a komprese starších fragmentů pro redukci kontextového šumu.",
                     "Sémantické Kotvy: Správa a rekalibrace vazeb mezi záznamy a kognitivními uzly."
                 )
             )
 
             ExpandableManualModule(
-                title = "7. Telemetrie & Auditní Stopa",
+                title = "7. Telemetrie & Auditní Stopa (ZK Ledger)",
                 icon = Icons.Default.Assessment,
                 color = OmnisAmber,
-                summary = "Komplexní monitoring výkonu, bezpečnostních událostí a spotřeby zdrojů.",
+                summary = "Komplexní monitoring výkonu, průchodů branami G1–G6, bezpečnostních událostí a spotřeby zdrojů.",
                 details = listOf(
-                    "Auditní Logy: Neodstranitelný záznam všech operátorských zásahů a systémových výjimek.",
+                    "Auditní Logy & ZK Ledger: Neodstranitelný SHA-256 řetězec všech operací Gatekeeper G1–G6, výjimek GatekeeperChainException a zásahů operátora.",
                     "Metriky Latence: Trasování délky odezvy sítě, inferenčního času modelu a databázových operací.",
-                    "Spotřeba Tokenů: Monitorování přidělených kvót a nákladů na jednotlivé dotazy."
+                    "Spotřeba Tokenů: Monitorování přidělených kvót a přepínání kaskády lokální/free providerů."
                 )
             )
         }
 
         if (userRole == UserRole.STANDARD_USER) {
             ExpandableManualModule(
-                title = "2. Autonomní Cíle",
+                title = "2. Autonomní Cíle & Kauzální Simulátor",
                 icon = Icons.Default.Flag,
                 color = OmnisEmerald,
-                summary = "Sledování progrese vašich projektů a misí.",
+                summary = "Sledování progrese projektů a interaktivní simulace intervencí do(X) v 8D matici.",
                 details = listOf(
-                    "Dekompozice: Tvorba podúkolů.",
-                    "Progrese: Automatický výpočet dokončení.",
-                    "Priority: Nastavení důležitosti úkolů."
+                    "Dekompozice & Priority: Tvorba podúkolů s automatickým výpočtem plnění.",
+                    "Kauzální Simulátor & Dialektika: Testování dopadu změn napříč 8 dimenzemi před reálným nasazením.",
+                    "Tensor Oversight: Přehled stability a skóre ověření každé odpovědi."
                 )
             )
         }
 
         ExpandableManualModule(
-            title = if (userRole == UserRole.ADMIN_OPERATOR) "8. Nexus & Agentní Topologie" else "3. Nexus Multi-Agent",
+            title = if (userRole == UserRole.ADMIN_OPERATOR) "8. Nexus & Multi-Agentní Debata" else "3. Nexus & Multi-Agentní Debata",
             icon = Icons.Default.Groups,
             color = OmnisViolet,
-            summary = "Kolaborace specializovaných agentů na komplexních úlohách.",
+            summary = "Kolaborace a oponentní dialektika specializovaných agentů nad jedním zadáním.",
             details = listOf(
-                "Agentní Týmy: Architekt, Security, Ekonom a jejich specializované role.",
-                "Topologie: Vizualizace hierarchie a komunikačních kanálů mezi agenty.",
-                "Synergie: Výpočet kognitivní koherence a odhalování názorových rozporů v týmu."
+                "Multi-Agentní Debata: Paralelní pohled Architekta, Security experta, Ekonoma a Právního auditora.",
+                "Topologie Sítě: Vizualizace hierarchie, uzlů a komunikačních kanálů mezi agenty.",
+                "Synergie & Konsenzus: Výpočet kognitivní koherence a odhalování názorových rozporů před finální syntézou."
             )
         )
 
         ExpandableManualModule(
-            title = if (userRole == UserRole.ADMIN_OPERATOR) "9. Exportní Engine & Šifrované Úložiště" else "4. Export & Ukládání Dat",
+            title = if (userRole == UserRole.ADMIN_OPERATOR) "9. Exportní Engine & Room v19 SQLCipher" else "4. Export & Šifrované Úložiště",
             icon = Icons.Default.PictureAsPdf,
             color = OmnisCyan,
-            summary = "Správa lokální persistence dat a generování formálních reportů.",
+            summary = "Šifrovaná lokální perzistence (Room v19 + SQLCipher AES-256) a generování auditních reportů.",
             details = if (userRole == UserRole.ADMIN_OPERATOR) listOf(
-                "PdfExportEngine: Generování certifikovaných auditních PDF protokolů s kryptografickým razítkem relace.",
-                "Lokální Room DB: Bezpečné ukládání všech záznamů na zařízení bez neautorizovaného odesílání do cloudu.",
-                "Integrita Databáze: Nástroje pro kontrolu konzistence a export provozních dat."
+                "PdfExportEngine: Generování auditních PDF protokolů a artefaktů s časovým razítkem relace.",
+                "Room v19 + SQLCipher AES-256-CBC: Šifrovaná DB (omnis_local_vectors_64d, omnis_sync_outbox) chráněná Android Keystore.",
+                "Sjednocená Synchronizace: Transakční outbox replikovaný do PostgreSQL 17 (pgvector + Apache AGE) a ElectricSQL 1.8.1."
             ) else listOf(
-                "PDF Export: Možnost exportovat výsledky dotazů do přehledného dokumentu.",
-                "Lokální Úložiště: Vaše data zůstávají bezpečně uložena na vašem zařízení."
+                "PDF & Artefakty: Export výsledků analýz a scénářů do přehledných dokumentů.",
+                "Room v19 + SQLCipher: Vaše záznamy jsou na zařízení šifrovány pomocí AES-256 a bezpečně synchronizovány."
             )
         )
 
@@ -404,8 +411,8 @@ private fun FaqAndTooltipsSection(userRole: UserRole) {
                 answer = "Zadávejte konkrétní technické výrazy místo vágních dotazů. Využívejte nápovědu PromptGuideTooltip nad textovým polem a v nastavení si ponechte sémantickou kontrolu zapnutou."
             )
             FaqItem(
-                question = "Jak bezpečně resetovat jistič systému?",
-                answer = "Jistič (Breaker) lze resetovat v horní liště, Admin Draweru nebo v Admin Hubu po manuální verifikaci stability. Doporučuje se nejdříve zkontrolovat chybovost v Telemetrii."
+                question = "Jak bezpečně resetovat jistič systému (Circuit Breaker) a co znamená HTTP 429 cooldown?",
+                answer = "Při přetížení LLM providera (HTTP 429) jistič automaticky respektuje hlavičku Retry-After v rozsahu 5–300 s, zobrazí v chatu ChatStatusBanner a přepne do bezpečného režimu. Po uplynutí cooldownu přejde do stavu HALF-OPEN, nebo jej operátor může po kontrole Telemetrie ručně resetovat v horní liště či Admin Hubu."
             )
             FaqItem(
                 question = "Kdy použít Dev Prompt Lab?",
@@ -418,13 +425,18 @@ private fun FaqAndTooltipsSection(userRole: UserRole) {
         }
 
         FaqItem(
+            question = "Jak funguje vrstva Gatekeeper G1–G6 před 8D Maticí dopadu?",
+            answer = "Než jakákoli data vstoupí do 8D Matice dopadu (SYS, ECON, PSYCH, ECO, LAW, SEC, PHYS, SOC), projdou sekvenčně šesti branami G1–G6 (včetně Dual-Gate kontroly vstupu i výstupu). Každá brána zapíše výsledek do auditní stopy a při chybě (např. NaN, Inf nebo nulový vektor) řetězec okamžitě přeruší výjimkou GatekeeperChainException."
+        )
+
+        FaqItem(
             question = "K čemu slouží 8D Matice dopadu?",
-            answer = "Matice v 8 rozměrech posuzuje dopad každé změny na stabilitu celého ekosystému, aby se předešlo neočekávaným vedlejším účinkům."
+            answer = "Matice v 8 rozměrech (SYS, ECON, PSYCH, ECO, LAW, SEC, PHYS, SOC) posuzuje dopad každé změny na stabilitu celého ekosystému, aby se předešlo neočekávaným vedlejším účinkům."
         )
 
         FaqItem(
             question = "Jak jsou ukládána data v aplikaci?",
-            answer = "Všechna data jsou ukládána lokálně v šifrované Room databázi. Do cloudu se odesílají pouze aktivní dotazy přes Gemini API."
+            answer = "Data jsou lokálně šifrována v databázi Room v19 pomocí SQLCipher (AES-256-CBC) s klíčem v Android Keystore, včetně 64D vektorů (omnis_local_vectors_64d) a transakčního outboxu (omnis_sync_outbox) synchronizovaného s PostgreSQL 17 / ElectricSQL 1.8.1."
         )
     }
 }

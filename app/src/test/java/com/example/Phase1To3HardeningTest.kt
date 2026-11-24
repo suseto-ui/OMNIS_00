@@ -266,4 +266,30 @@ class Phase1To3HardeningTest {
         assertTrue(admView.diagnosticBreakdown.startsWith("ADMIN_FORENSIC["))
         assertNotNull(admView.ragCosineScore)
     }
+
+    @Test
+    fun circuitBreaker_http429RetryAfter_updatesDegradedTelemetryAndResetsCleanly() {
+        com.example.gateway.OmnisCircuitBreaker.reset()
+        com.example.gateway.OmnisCircuitBreaker.reportFailure(
+            httpCode = 429,
+            errorMsg = "Quota exceeded",
+            retryAfterSeconds = 20L
+        )
+        val degraded = com.example.gateway.OmnisCircuitBreaker.telemetry.value
+        assertEquals(com.example.gateway.CircuitState.OPEN, degraded.state)
+        assertTrue(degraded.isDegraded)
+        assertEquals(429, degraded.lastHttpCode)
+        assertEquals(20L, degraded.retryAfterSeconds)
+        assertTrue(degraded.cooldownRemainingSeconds > 0L)
+        assertTrue(
+            com.example.telemetry.TelemetryEngine.events.value.any {
+                it.component == "CIRCUIT_BREAKER" && it.message.contains("429")
+            }
+        )
+
+        com.example.gateway.OmnisCircuitBreaker.reset()
+        val recovered = com.example.gateway.OmnisCircuitBreaker.telemetry.value
+        assertEquals(com.example.gateway.CircuitState.CLOSED, recovered.state)
+        assertFalse(recovered.isDegraded)
+    }
 }

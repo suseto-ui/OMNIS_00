@@ -101,7 +101,7 @@ fun PromptGuideTooltip(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "Pro 100% verifikovanou exekuci bez zásahu sémantické brány formulujte dotaz:",
+                    text = "Pro plynulý průchod branami Gatekeeper G1–G6 bez zásahu sémantické brány formulujte dotaz:",
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 11.sp
                 )
