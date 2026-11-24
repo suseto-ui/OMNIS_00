@@ -32,6 +32,7 @@ debug.keystore.base64
 
 # Ignored artifacts, secrets & working notes
 .aistudio/
+public/assets/aistudio/
 .kotlin/
 .vscode/
 gabbage/
