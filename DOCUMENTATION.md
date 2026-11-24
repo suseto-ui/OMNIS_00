@@ -1,4 +1,4 @@
-# OMNIS by Suseto – KOMPLETNÍ OPERÁTORSKÝ, TECHNICKÝ A METODICKÝ MANUÁL (v4.5 / v7.0 Production Ready)
+# OMNIS by Suseto – KOMPLETNÍ OPERÁTORSKÝ, TECHNICKÝ A METODICKÝ MANUÁL (v4.5 Production Ready)
 
 **OMNIS by Suseto (Autonomous Polymathic Execution & Invariant Engine — AKGE-8D)** je transdisciplinární kognitivní architektura a analytický ekosystém pro Android (Kotlin 2.0 / Jetpack Compose Material 3) integrovaný s Python FastAPI backendem, sjednocenou **PostgreSQL 17** databází (`pgvector` 64D HNSW, `Apache AGE` `omnis_causal_graph`, `pgcrypto`), **ElectricSQL 1.8.1** synchronizací a **8D tenzorovou logikou** pro nelineární modelování systémových dopadů, kauzální intervence a autonomní orchestraci.
 

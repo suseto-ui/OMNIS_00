@@ -1,4 +1,4 @@
-# OMNIS by Suseto (O.M.N.I.S. APEX v4.5 / v7.0)
+# OMNIS by Suseto (O.M.N.I.S. APEX v4.5)
 
 **OMNIS by Suseto** (**O.M.N.I.S. APEX** — Autonomous Polymathic Execution & Invariant Engine) je transdisciplinární kognitivní architektura a exekuční platforma pro Android (Kotlin 2.0 & Jetpack Compose Material 3) integrovaná se sjednoceným open-source Python FastAPI backendem, **PostgreSQL 17** (`pgvector` 64D HNSW + `Apache AGE` kauzální graf + `pgcrypto`), **ElectricSQL 1.8.1** synchronizací a striktním Zero-Fluff výstupním validátorem.
 
@@ -158,7 +158,7 @@ stateDiagram-v2
 | **Persistence (Edge)** | Room DB v19 & SQLCipher | Offline-first AES-256-CBC šifrovaná paměť (`omnis_local_vectors_64d`, `MIGRATION_18_19`) s Android Keystore a Transactional Outbox (`omnis_sync_outbox`) |
 | **Persistence (Core)** | PostgreSQL 17 + `pgvector` + `pgcrypto` | 64D HNSW index (`rag_memory_64d`), RLS politiky, least-privilege role (`omnis_app_rw`, `omnis_audit_append`, `omnis_sync_repl`), append-only triggery |
 | **Sync & Cascade** | ElectricSQL 1.8.1 + LLM Cascade | Logická replikace `electric_publication_default` (`REPLICA IDENTITY FULL`), Android Firebase AI Logic & serverová kaskáda (`gemma4_local` -> Groq -> Gemini -> OpenRouter) |
-| **Vault Index** | `_OMNIS_VAULT/` (v7.0) | Kompletní topologický a forenzní index (`00_OMNIS_MASTER_INDEX.md`, `00_TOPOLOGY_GRAPH.json`) ověřovaný SHA-256 kontrolními součty |
+| **Vault Index** | `_OMNIS_VAULT/` | Kompletní topologický a forenzní index (`00_OMNIS_MASTER_INDEX.md`, `00_TOPOLOGY_GRAPH.json`) ověřovaný SHA-256 kontrolními součty |
 
 ---
 
