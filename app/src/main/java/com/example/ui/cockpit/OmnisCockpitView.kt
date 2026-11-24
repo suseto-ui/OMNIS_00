@@ -232,6 +232,14 @@ fun OmnisCockpitView(
             verdict = lastRefusalVerdict,
             userRole = currentRole
         )
+        Spacer(modifier = Modifier.height(14.dp))
+        val context = androidx.compose.ui.platform.LocalContext.current
+        com.example.ui.components.SyncStatusComponent(
+            onTriggerSync = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                com.example.data.OmnisBatchSyncScheduler.scheduleNetworkRecoverySync(context)
+            }
+        )
         val refusalVerdict = lastRefusalVerdict
         if (refusalVerdict != null && !refusalVerdict.isApproved) {
             Spacer(modifier = Modifier.height(8.dp))
