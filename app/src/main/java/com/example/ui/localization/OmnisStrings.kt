@@ -42,6 +42,7 @@ object OmnisStrings {
             OmnisTab.REPUTATION -> "Dialektická Reputace"
             OmnisTab.APEX_DASHBOARD -> "APEX Telemetrický Dashboard"
             OmnisTab.MULTI_AGENT_DEBATE -> "Multi-Agentní Debatní Kroužek"
+            OmnisTab.SYNC_LOGS -> "Sync Diagnostic Logs"
         }
         AppLanguage.EN -> when (tab) {
             OmnisTab.CHAT -> "Cognitive Chat"
@@ -68,6 +69,7 @@ object OmnisStrings {
             OmnisTab.REPUTATION -> "Dialectical Reputation"
             OmnisTab.APEX_DASHBOARD -> "APEX Telemetry Dashboard"
             OmnisTab.MULTI_AGENT_DEBATE -> "Multi-Agent Debate Arena"
+            OmnisTab.SYNC_LOGS -> "Sync Diagnostic Logs"
         }
     }
 

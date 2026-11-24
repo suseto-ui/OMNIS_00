@@ -105,6 +105,21 @@ class OmnisBatchSyncWorker(
                     component = "BATCH_SYNC_WORKER",
                     message = "WorkManager dávková synchronizace úspěšně uložila $totalSynced záznamů do cloudového pgvector backendu."
                 )
+                SyncLogManager.logSync(
+                    taskType = "Outbox & Batch Sync",
+                    success = true,
+                    syncedCount = totalSynced,
+                    payloadSizeBytes = totalSynced * 512L,
+                    message = "Úspěšně synchronizováno $totalSynced položek do PostgreSQL 17 / ElectricSQL."
+                )
+            } else {
+                SyncLogManager.logSync(
+                    taskType = "Outbox & Batch Sync",
+                    success = true,
+                    syncedCount = 0,
+                    payloadSizeBytes = 0L,
+                    message = "Žádná nová data k synchronizaci (fronta je prázdná)."
+                )
             }
             Result.success(workDataOf(KEY_SYNCED_COUNT to totalSynced, KEY_PARTIAL to false))
         } catch (e: Exception) {
@@ -113,6 +128,13 @@ class OmnisBatchSyncWorker(
                 type = "WARNING",
                 component = "BATCH_SYNC_WORKER",
                 message = "Výjimka synchronizace (naplánován retry): ${e.localizedMessage ?: "Unknown"}"
+            )
+            SyncLogManager.logSync(
+                taskType = "Outbox & Batch Sync",
+                success = false,
+                syncedCount = totalSynced,
+                payloadSizeBytes = 0L,
+                message = "Chyba synchronizace: ${e.localizedMessage ?: "Unknown error"}"
             )
             Result.retry()
         }

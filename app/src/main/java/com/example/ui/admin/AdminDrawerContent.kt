@@ -550,6 +550,14 @@ fun AdminDrawerContent(
             )
 
             AdminDrawerItem(
+                title = "Sync Diagnostic Logs",
+                icon = Icons.Default.CloudSync,
+                selected = activeTab == OmnisTab.SYNC_LOGS,
+                tint = OmnisCyan,
+                onClick = { onTabSelected(OmnisTab.SYNC_LOGS) }
+            )
+
+            AdminDrawerItem(
                 title = "Nastavení Aplikace",
                 icon = Icons.Default.Settings,
                 selected = activeTab == OmnisTab.SETTINGS,

@@ -49,6 +49,9 @@ fun UserTabRouter(
 ) {
     Crossfade(targetState = activeTab, modifier = modifier.fillMaxSize(), label = "user_tab_transition") { currentTab ->
         when (currentTab) {
+            OmnisTab.SYNC_LOGS -> {
+                com.example.ui.components.SyncLogScreen()
+            }
             OmnisTab.MULTI_AGENT_DEBATE -> {
                 com.example.ui.debate.MultiAgentDebateView(viewModel = viewModel)
             }
