@@ -187,7 +187,7 @@ fun ChatStatusBanner(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "Deterministický Fallback aktivní (${breakerTelemetry.state.name})",
+                                text = "Deterministický záložní režim aktivní (${breakerTelemetry.state.name})",
                                 color = OmnisStyleSheet.Colors.WarningAmber,
                                 style = OmnisStyleSheet.Typography.badgeText
                             )
@@ -351,19 +351,19 @@ fun ChatStatusBanner(
 private fun formatErrorMessage(rawError: String): String {
     return when {
         rawError.contains("402") || rawError.contains("prepayment credits are depleted") || rawError.contains("billing") -> {
-            "CHYBA: Nedostatek kreditů v AI Studio (HTTP 402).\n" +
-            "U vašeho Google AI Studio účtu došlo k vyčerpání předplaceného kreditu nebo limitu.\n" +
+            "CHYBA: Nedostatek kreditů v AI Studiu (HTTP 402).\n" +
+            "U vašeho účtu Google AI Studio došlo k vyčerpání předplaceného kreditu nebo limitu.\n" +
             "Aplikace běží bezpečně v lokálním offline režimu."
         }
         rawError.contains("429") || rawError.contains("quota") || rawError.contains("rate limit") -> {
             "CHYBA: Překročen limit požadavků (HTTP 429).\n" +
-            "Byl dočasně překročen bezplatný limit API požadavků.\n" +
-            "Aplikace běží v lokálním offline režimu."
+            "Dočasně byl překročen limit API požadavků.\n" +
+            "Aplikace běží bezpečně v lokálním offline režimu."
         }
         rawError.contains("400") || rawError.contains("invalid key") || rawError.contains("API key not valid") -> {
             "CHYBA: Neplatný API klíč (HTTP 400/403).\n" +
-            "Zkontrolujte prosím správnost vložení klíče GEMINI_API_KEY v panelu 'Secrets'.\n" +
-            "Aplikace běží v lokálním offline režimu."
+            "Zkontrolujte prosím správnost klíče GEMINI_API_KEY v panelu 'Secrets'.\n" +
+            "Aplikace běží bezpečně v lokálním offline režimu."
         }
         else -> {
             rawError

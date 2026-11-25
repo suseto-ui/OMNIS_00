@@ -169,7 +169,9 @@ fun UserTopAppBar(
                         modifier = Modifier.padding(horizontal = 6.dp)
                     ) {
                         Text(
-                            text = if (userExperienceMode == com.example.ui.UserExperienceMode.STANDARD) "🌱 Zač." else "⚡ Exp.",
+                            text = if (userExperienceMode == com.example.ui.UserExperienceMode.STANDARD) {
+                                if (currentLang == AppLanguage.EN) "🌱 Beg." else "🌱 Zač."
+                            } else "⚡ Exp.",
                             color = if (userExperienceMode == com.example.ui.UserExperienceMode.STANDARD) OmnisEmerald else OmnisViolet,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
@@ -261,7 +263,12 @@ fun UserTopAppBar(
                                         tint = OmnisCyan,
                                         modifier = Modifier.size(16.dp)
                                     )
-                                    Text("Nastavení / Settings", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                    Text(
+                                        text = if (currentLang == AppLanguage.EN) "Settings" else "Nastavení",
+                                        color = Color.White,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp
+                                    )
                                 }
                             },
                             onClick = {
@@ -282,7 +289,12 @@ fun UserTopAppBar(
                                             tint = OmnisCyan,
                                             modifier = Modifier.size(16.dp)
                                         )
-                                        Text("Export do PDF", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                        Text(
+                                            text = OmnisStrings.topBarExportPdf(currentLang),
+                                            color = Color.White,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 },
                                 onClick = {
@@ -302,7 +314,12 @@ fun UserTopAppBar(
                                             tint = OmnisEmerald,
                                             modifier = Modifier.size(16.dp)
                                         )
-                                        Text("Export do Markdown (.md)", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                        Text(
+                                            text = if (currentLang == AppLanguage.EN) "Export to Markdown (.md)" else "Exportovat do Markdownu (.md)",
+                                            color = Color.White,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 },
                                 onClick = {
@@ -325,7 +342,12 @@ fun UserTopAppBar(
                                             tint = Color(0xFFFF5252),
                                             modifier = Modifier.size(16.dp)
                                         )
-                                        Text("Vymazat historii", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                        Text(
+                                            text = if (currentLang == AppLanguage.EN) "Clear History" else "Vymazat historii",
+                                            color = Color.White,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 },
                                 onClick = {
@@ -347,7 +369,12 @@ fun UserTopAppBar(
                                         tint = OmnisCyan,
                                         modifier = Modifier.size(16.dp)
                                     )
-                                    Text("Interaktivní nápověda", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                    Text(
+                                        text = if (currentLang == AppLanguage.EN) "Interactive Help" else "Interaktivní nápověda",
+                                        color = Color.White,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp
+                                    )
                                 }
                             },
                             onClick = {
@@ -368,7 +395,13 @@ fun UserTopAppBar(
                                         tint = Color(0xFFFF5252),
                                         modifier = Modifier.size(16.dp)
                                     )
-                                    Text("Odhlásit se / Přihlášení", color = Color(0xFFFF5252), fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = if (currentLang == AppLanguage.EN) "Logout / Sign In" else "Odhlásit se",
+                                        color = Color(0xFFFF5252),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             },
                             onClick = {

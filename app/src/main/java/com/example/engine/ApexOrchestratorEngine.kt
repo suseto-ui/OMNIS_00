@@ -54,7 +54,7 @@ KROK 4: Vygeneruj finální deterministický artefakt podle schématu: Analýza 
             ApexExecutionStep(1, "Ontologická Recepce", "Extrahována data a entity dotazu bez emotivního šumu do interního scratchpadu."),
             ApexExecutionStep(2, "Paralelní Fúze (Lex/Tech/Econ)", "Spuštěna transdisciplinární dekonstrukce na prvočinitele."),
             ApexExecutionStep(3, "Adversariální Red-Teaming", "Komerční a právní prověrka. Rezonanční krystal ověřen."),
-            ApexExecutionStep(4, "Zero-Fluff Exekuce", "Vygenerován deterministický artefakt bez vaty.")
+            ApexExecutionStep(4, "Zero-Fluff Exekuce", "Vygenerován deterministický artefakt bez balastu.")
         )
 
         val candidateText = if (rawModelResponse.isNotBlank()) {
@@ -65,7 +65,7 @@ KROK 4: Vygeneruj finální deterministický artefakt podle schématu: Analýza 
 <scratchpad>
 $generatedScratchpad
 </scratchpad>
-ROZHODNUTÍ O.M.N.I.S. APEX: Aplikovat sjednocený architektonický model (Room v18 SQLCipher + ElectricSQL Sync + PostgreSQL 17 pgvector HNSW & Apache AGE). Tím se dosáhne nulové latence u klienta a absolutní sémantické přesnosti v 64D tenzorové paměti.
+ROZHODNUTÍ O.M.N.I.S. APEX: Aplikovat sjednocený architektonický model (Room v19 SQLCipher + ElectricSQL Sync + PostgreSQL 17 pgvector HNSW & Apache AGE). Tím se dosáhne nulové latence u klienta a absolutní sémantické přesnosti v 64D tenzorové paměti.
 """.trimIndent()
         }
 

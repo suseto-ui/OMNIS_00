@@ -53,5 +53,18 @@ class AppLocaleManagerTest {
 
         assertEquals("8D Matice & Octagon", OmnisStrings.tabTitle(OmnisTab.MATRIX, AppLanguage.CS))
         assertEquals("8D Matrix & Octagon", OmnisStrings.tabTitle(OmnisTab.MATRIX, AppLanguage.EN))
+
+        assertEquals("Architekt Scénářů", OmnisStrings.tabTitle(OmnisTab.SCENARIOS, AppLanguage.CS))
+        assertEquals("Scenario Architect", OmnisStrings.tabTitle(OmnisTab.SCENARIOS, AppLanguage.EN))
+
+        assertEquals("Kauzální Simulátor", OmnisStrings.tabTitle(OmnisTab.CAUSAL_SIMULATOR, AppLanguage.CS))
+        assertEquals("Causal Simulator", OmnisStrings.tabTitle(OmnisTab.CAUSAL_SIMULATOR, AppLanguage.EN))
+
+        assertEquals("Diagnostika Synchronizace", OmnisStrings.tabTitle(OmnisTab.SYNC_LOGS, AppLanguage.CS))
+        assertEquals("Sync Diagnostic Logs", OmnisStrings.tabTitle(OmnisTab.SYNC_LOGS, AppLanguage.EN))
+
+        assertEquals("PROČISTIT DB", OmnisStrings.auditPruneDb(AppLanguage.CS))
+        assertEquals("PRUNE DB", OmnisStrings.auditPruneDb(AppLanguage.EN))
+        assertEquals("Přepnout na Experta ⚡", OmnisStrings.beginnerSwitchToExpert(AppLanguage.CS))
     }
 }

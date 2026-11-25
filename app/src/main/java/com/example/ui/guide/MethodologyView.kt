@@ -308,7 +308,7 @@ private fun FullModulesManualSection(userRole: UserRole) {
                 details = listOf(
                     "Stavový Automat: CLOSED (normální provoz) -> OPEN (odpojení při opakovaném selhání nebo HTTP 429) -> HALF-OPEN (ověřovací sonda).",
                     "HTTP 429 Retry-After Cooldown: Jistič respektuje hlavičku Retry-After v bezpečném rozmezí 5–300 s a informuje uživatele přes ChatStatusBanner.",
-                    "Manuální Shození & Reset: Operátor může jistič okamžitě shodit nebo autorizovaně resetovat po stabilizaci backendu."
+                    "Manuální vypnutí a reset: Operátor může jistič okamžitě vypnout nebo autorizovaně resetovat po stabilizaci backendu."
                 )
             )
 
@@ -389,7 +389,7 @@ private fun FullModulesManualSection(userRole: UserRole) {
                     "Krok 1 (Struktura promptu): Vždy zadejte [Akční sloveso] + [Modul/Komponenta] + [Kritérium] (např. '[SYSTEMS_INTELLIGENCE] Optimalizuj latenci dotazů a zkontroluj integritu tenzorů').",
                     "Krok 2 (Prompt Gateway Review): Pokud vyskočí okno s navrženým promptem, zkontrolujte text a klikněte na 'Převzít a odeslat' pro garantovanou validní exekuci.",
                     "Krok 3 (Filtry domén): Pokud vidíte pouze systémové záznamy, použijte 'Zrušit filtr domén' v horní části chatu pro obnovení kompletního toku.",
-                    "Krok 4 (Krizová reakce): Při hlášce o tripnutí jističe (Circuit Breaker OPEN) zkontrolujte telemetrii a proveďte autorizovaný reset jističe."
+                    "Krok 4 (Krizová reakce): Při hlášce o rozepnutí jističe (Circuit Breaker OPEN) zkontrolujte telemetrii a proveďte autorizovaný reset jističe."
                 )
             )
         }

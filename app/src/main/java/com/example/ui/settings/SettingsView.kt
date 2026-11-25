@@ -221,7 +221,7 @@ fun SettingsView(
                 // Gender hlasu
                 Column {
                     Text(
-                        text = if (isEnglish) "Voice Gender" else "Pohlaví / Gender hlasu",
+                        text = if (isEnglish) "Voice Gender" else "Typ / barva hlasu",
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium
@@ -430,7 +430,7 @@ fun SettingsView(
                                 )
                                 Text(
                                     text = if (mode == UserExperienceMode.STANDARD) {
-                                        if (isEnglish) "Friendly explanations without complex matrix math" else "Přirozené lidské odpovedi bez složitých vzorců"
+                                        if (isEnglish) "Friendly explanations without complex matrix math" else "Přirozené lidské odpovědi bez složitých vzorců"
                                     } else {
                                         if (isEnglish) "Full cognitive process logs, 8D vectors, Zero-Fluff" else "Zobrazuje plný myšlenkový postup, 8D matice a verifikace"
                                     },
@@ -577,7 +577,7 @@ fun SettingsView(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (isEnglish) "Diagnostics & Self-Healing" else "Diagnostika & Samo-Uzdravení",
+                        text = if (isEnglish) "Diagnostics & Self-Healing" else "Diagnostika a samooprava",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
@@ -598,7 +598,7 @@ fun SettingsView(
                 Button(
                     onClick = {
                         isHealingRunning = true
-                        healingLog = if (isEnglish) "Running self-healing sequence...\n1. Verifying SQLCipher DB tables... OK\n2. Re-indexing RAG Memory Cache... OK\n3. Refreshing physical telemetry snapshot... OK\n4. All 8D dimensions calibrated!" else "Spouštím sekvenci samo-uzdravení...\n1. Verifikace tabulek SQLCipher DB... OK\n2. Re-indexace RAG paměťové mezipaměti... OK\n3. Obnovení snímku fyzické telemetrie... OK\n4. Všechny 8D dimenze zkalibrovány!"
+                        healingLog = if (isEnglish) "Running self-healing sequence...\n1. Verifying SQLCipher DB tables... OK\n2. Re-indexing RAG Memory Cache... OK\n3. Refreshing physical telemetry snapshot... OK\n4. All 8D dimensions calibrated!" else "Spouštím sekvenci samoopravy...\n1. Verifikace tabulek SQLCipher DB... OK\n2. Re-indexace RAG paměťové mezipaměti... OK\n3. Obnovení snímku fyzické telemetrie... OK\n4. Všechny 8D dimenze zkalibrovány!"
                         isHealingRunning = false
                     },
                     enabled = !isHealingRunning,
@@ -613,7 +613,7 @@ fun SettingsView(
                     Icon(imageVector = Icons.Default.Build, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isHealingRunning) "Opravuji..." else if (isEnglish) "Execute Full Self-Healing Diagnostic" else "Spustit Kompletní Samo-Uzdravení",
+                        text = if (isHealingRunning) "Opravuji..." else if (isEnglish) "Execute Full Self-Healing Diagnostic" else "Spustit kompletní samoopravu",
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.5.sp
                     )
@@ -700,7 +700,7 @@ fun SettingsView(
                     description = if (isEnglish) 
                         "Quick actionable suggestion chips and direct navigation under assistant answers" 
                     else 
-                        "Rychlé operabilní návrhy dalších kroků a přechody pod odpovědí asistenta",
+                        "Rychlé praktické návrhy dalších kroků a přechody pod odpovědí asistenta",
                     checked = showNextStepsPref,
                     onCheckedChange = { ChatDisplayPreferences.setShowInteractiveNextSteps(it, context) },
                     testTag = "toggle_next_steps",
@@ -760,7 +760,7 @@ fun SettingsView(
 
                 // 6. Cyber-Glass efekty
                 ChatPreferenceToggleRow(
-                    title = if (isEnglish) "Cyber-Glass Design & Ambient Glow" else "Cyber-Glass design a plynulý glow",
+                    title = if (isEnglish) "Cyber-Glass Design & Ambient Glow" else "Cyber-Glass design a jemné podsvícení",
                     description = if (isEnglish) 
                         "Modern translucent glassmorphism surfaces and neon accents across chat" 
                     else 
@@ -882,7 +882,7 @@ fun SettingsView(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "O.M.N.I.S. AKGE-8D v4.2",
+                    text = "O.M.N.I.S. AKGE-8D v4.5",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp

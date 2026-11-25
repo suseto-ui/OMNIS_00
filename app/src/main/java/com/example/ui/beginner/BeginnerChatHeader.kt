@@ -154,7 +154,7 @@ fun BeginnerChatHeader(
                     HorizontalDivider(color = OmnisBorderDark, thickness = 0.5.dp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = if (currentLang == AppLanguage.EN) "Plain answers in everyday Czech without complex formulas." else "Srozumitelné odpovědi v běžné řeči bez složitých matic a vzorců.",
+                        text = if (currentLang == AppLanguage.EN) "Plain answers in everyday language without complex formulas." else "Srozumitelné odpovědi v běžné řeči bez složitých matic a vzorců.",
                         color = OmnisTextLight,
                         fontSize = 9.5.sp,
                         fontFamily = FontFamily.Monospace
@@ -172,7 +172,7 @@ fun BeginnerChatHeader(
                             fontSize = 9.sp
                         )
                         Text(
-                            text = if (currentLang == AppLanguage.EN) "Switch to Expert ⚡" else "Přepnout na Expert ⚡",
+                            text = if (currentLang == AppLanguage.EN) "Switch to Expert ⚡" else "Přepnout na Experta ⚡",
                             color = OmnisViolet,
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,

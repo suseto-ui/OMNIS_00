@@ -23,7 +23,7 @@ object OmnisStrings {
             OmnisTab.DASHBOARD -> "Operační Kokpit"
             OmnisTab.GUIDE -> "Metodika & Průvodce"
             OmnisTab.GOALS -> "Autonomní Cíle"
-            OmnisTab.SCENARIOS -> "Scenario Architect"
+            OmnisTab.SCENARIOS -> "Architekt Scénářů"
             OmnisTab.ARTIFACTS -> "Artefakty & Výstupy"
             OmnisTab.MEMORY -> "Historická Paměť"
             OmnisTab.ANALYTICS -> "Analytický Přehled (8D)"
@@ -33,7 +33,7 @@ object OmnisStrings {
             OmnisTab.TELEMETRY -> "Systémová Telemetrie"
             OmnisTab.TEST_SEMANTIC -> "Sémantické Testování"
             OmnisTab.DEV_PROMPT_LAB -> "Dev Prompt Lab"
-            OmnisTab.CAUSAL_SIMULATOR -> "Causal Simulator"
+            OmnisTab.CAUSAL_SIMULATOR -> "Kauzální Simulátor"
             OmnisTab.DIALECTICS -> "Dialektický Motor"
             OmnisTab.PRODUCTION_AUDIT -> "Produkční Audit & Benchmark"
             OmnisTab.TENSOR_OVERSIGHT -> "Tenzorový Dohled & Autoregrese"
@@ -42,7 +42,7 @@ object OmnisStrings {
             OmnisTab.REPUTATION -> "Dialektická Reputace"
             OmnisTab.APEX_DASHBOARD -> "APEX Telemetrický Dashboard"
             OmnisTab.MULTI_AGENT_DEBATE -> "Multi-Agentní Debatní Kroužek"
-            OmnisTab.SYNC_LOGS -> "Sync Diagnostic Logs"
+            OmnisTab.SYNC_LOGS -> "Diagnostika Synchronizace"
         }
         AppLanguage.EN -> when (tab) {
             OmnisTab.CHAT -> "Cognitive Chat"
@@ -115,11 +115,11 @@ object OmnisStrings {
     fun topBarDeleteHistory(lang: AppLanguage = currentLang) =
         if (lang == AppLanguage.EN) "Clear History" else "Smazat Historii"
     fun topBarCloudSync(lang: AppLanguage = currentLang) =
-        if (lang == AppLanguage.EN) "Cloud Sync" else "Cloud Sync"
+        if (lang == AppLanguage.EN) "Cloud Sync" else "Cloudová Synchronizace"
     fun topBarExportPdf(lang: AppLanguage = currentLang) =
         if (lang == AppLanguage.EN) "Export to PDF" else "Exportovat do PDF"
     fun topBarExportMarkdown(lang: AppLanguage = currentLang) =
-        if (lang == AppLanguage.EN) "Export to Markdown" else "Exportovat do Markdown"
+        if (lang == AppLanguage.EN) "Export to Markdown" else "Exportovat do Markdownu"
     fun topBarCertifiedAudit(lang: AppLanguage = currentLang) =
         if (lang == AppLanguage.EN) "Certified Audit" else "Certifikovaný Audit"
     fun topBarHelp(lang: AppLanguage = currentLang) =
@@ -145,9 +145,9 @@ object OmnisStrings {
     fun beginnerGuideTitle(lang: AppLanguage = currentLang) =
         if (lang == AppLanguage.EN) "Beginner Guide" else "Průvodce začátečníka"
     fun beginnerSwitchToExpert(lang: AppLanguage = currentLang) =
-        if (lang == AppLanguage.EN) "Switch to Expert ⚡" else "Přepnout na Expert ⚡"
+        if (lang == AppLanguage.EN) "Switch to Expert ⚡" else "Přepnout na Experta ⚡"
     fun beginnerSwitchToBeginner(lang: AppLanguage = currentLang) =
-        if (lang == AppLanguage.EN) "Switch to Beginner 🌱" else "Přepnout na Začátečník 🌱"
+        if (lang == AppLanguage.EN) "Switch to Beginner 🌱" else "Přepnout na Začátečníka 🌱"
 
     // ==========================================
     // KOGNITIVNÍ CHAT
@@ -163,7 +163,7 @@ object OmnisStrings {
     fun chatEmptyGreetingTitle(lang: AppLanguage = currentLang) =
         if (lang == AppLanguage.EN) "O.M.N.I.S. AKGE-8D Core" else "O.M.N.I.S. AKGE-8D Kognitivní Jádro"
     fun chatEmptyGreetingSubtitle(lang: AppLanguage = currentLang) =
-        if (lang == AppLanguage.EN) "Invariant Inference Engine • Zero-Hallucination Matrix • CSR Causal Graph" else "Stroj Invariantní Inference • Eliminace Halucinací • Kauzální Graf CSR"
+        if (lang == AppLanguage.EN) "Invariant Inference Engine • Zero-Hallucination Matrix • CSR Causal Graph" else "Jádro Invariantní Inference • Eliminace Halucinací • Kauzální Graf CSR"
     fun chatAttachImage(lang: AppLanguage = currentLang) =
         if (lang == AppLanguage.EN) "Scan Image / OCR Vector" else "Skenovat Obraz / OCR Vektor"
     fun chatAttachDoc(lang: AppLanguage = currentLang) =
@@ -181,7 +181,7 @@ object OmnisStrings {
     fun auditReviewSystem(lang: AppLanguage = currentLang) =
         if (lang == AppLanguage.EN) "REVIEW SYSTEM" else "PŘEZKOUMAT SYSTÉM"
     fun auditPruneDb(lang: AppLanguage = currentLang) =
-        if (lang == AppLanguage.EN) "PRUNE DB" else "PROŘEZAT DB"
+        if (lang == AppLanguage.EN) "PRUNE DB" else "PROČISTIT DB"
     fun auditTotalChecks(lang: AppLanguage = currentLang) =
         if (lang == AppLanguage.EN) "Total Checks" else "Testů celkem"
     fun auditPassed(lang: AppLanguage = currentLang) =

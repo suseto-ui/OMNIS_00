@@ -135,7 +135,7 @@ fun OmnisLoginScreen(
                                 .background(OmnisEmerald)
                         )
                         Text(
-                            text = "SYSTÉM ONLINE • RBAC AUTH ACTIVE",
+                            text = "SYSTÉM ONLINE • AKTIVNÍ ŘÍZENÍ PŘÍSTUPU",
                             color = OmnisEmerald,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
@@ -171,7 +171,7 @@ fun OmnisLoginScreen(
                             fontFamily = FontFamily.Monospace
                         )
                         Text(
-                            text = if (isRegisterMode) "Nová Registrace • Solené PBKDF2 & JWT" else "Cognitive Architecture • Security Gateway",
+                            text = if (isRegisterMode) "Nová registrace • Zabezpečené přihlášení" else "Kognitivní architektura • Bezpečnostní brána",
                             color = OmnisCyan,
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace
@@ -202,7 +202,7 @@ fun OmnisLoginScreen(
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "ODHLÁŠENO BEZPEČNOSTNÍM INTERCEPTOREM",
+                                    text = "RELACE UKONČENA BEZPEČNOSTNÍ OCHRANOU",
                                     color = Color(0xFFFF5252),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
@@ -292,7 +292,7 @@ fun OmnisLoginScreen(
                             Icon(Icons.Default.Security, contentDescription = null, tint = OmnisCyan, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Nová registrace podléhá schválení administrátorem (susetofu@gmail.com). Účet bude aktivován po schválení.",
+                                text = "Nová registrace podléhá schválení administrátorem. Účet bude aktivován po ověření.",
                                 color = Color.White,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp

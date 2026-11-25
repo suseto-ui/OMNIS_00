@@ -270,7 +270,7 @@ fun ProductionAuditView(
                                     ) {
                                         Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("PROŘEZAT DB", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        Text(com.example.ui.localization.OmnisStrings.auditPruneDb(), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                     }
                                 }
                             }

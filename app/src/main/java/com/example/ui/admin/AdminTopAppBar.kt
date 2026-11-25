@@ -153,7 +153,9 @@ fun AdminTopAppBar(
                     )
                 ) {
                     Text(
-                        text = if (userExperienceMode == com.example.ui.UserExperienceMode.STANDARD) "🌱 Zač." else "⚡ Exp.",
+                        text = if (userExperienceMode == com.example.ui.UserExperienceMode.STANDARD) {
+                            if (currentLang == AppLanguage.EN) "🌱 Beg." else "🌱 Zač."
+                        } else "⚡ Exp.",
                         color = if (userExperienceMode == com.example.ui.UserExperienceMode.STANDARD) OmnisEmerald else OmnisViolet,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -269,7 +271,12 @@ fun AdminTopAppBar(
                                         tint = OmnisAmber,
                                         modifier = Modifier.size(16.dp)
                                     )
-                                    Text("Nastavení / Settings", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                    Text(
+                                        text = if (currentLang == AppLanguage.EN) "Settings" else "Nastavení",
+                                        color = Color.White,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp
+                                    )
                                 }
                             },
                             onClick = {
@@ -284,7 +291,12 @@ fun AdminTopAppBar(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Icon(Icons.Default.Info, contentDescription = null, tint = OmnisAmber, modifier = Modifier.size(16.dp))
-                                    Text("Interaktivní nápověda", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                    Text(
+                                        text = if (currentLang == AppLanguage.EN) "Interactive Help" else "Interaktivní nápověda",
+                                        color = Color.White,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp
+                                    )
                                 }
                             },
                             onClick = {
@@ -300,7 +312,12 @@ fun AdminTopAppBar(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
-                                    Text("Vymazat historii paměti", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                    Text(
+                                        text = if (currentLang == AppLanguage.EN) "Clear Memory History" else "Vymazat historii paměti",
+                                        color = Color.White,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp
+                                    )
                                 }
                             },
                             onClick = {
@@ -318,7 +335,12 @@ fun AdminTopAppBar(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = OmnisAmber, modifier = Modifier.size(16.dp))
-                                        Text("Export do PDF", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                        Text(
+                                            text = OmnisStrings.topBarExportPdf(currentLang),
+                                            color = Color.White,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 },
                                 onClick = {
@@ -334,7 +356,12 @@ fun AdminTopAppBar(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Icon(Icons.Default.Description, contentDescription = null, tint = OmnisEmerald, modifier = Modifier.size(16.dp))
-                                        Text("Export do Markdown (.md)", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                        Text(
+                                            text = if (currentLang == AppLanguage.EN) "Export to Markdown (.md)" else "Exportovat do Markdownu (.md)",
+                                            color = Color.White,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 },
                                 onClick = {
@@ -350,7 +377,12 @@ fun AdminTopAppBar(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
-                                        Text("Certifikovaný Auditní Protokol", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                        Text(
+                                            text = if (currentLang == AppLanguage.EN) "Certified Audit Report" else "Certifikovaný auditní protokol",
+                                            color = Color.White,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 },
                                 onClick = {

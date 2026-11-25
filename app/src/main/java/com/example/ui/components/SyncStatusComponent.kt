@@ -31,6 +31,8 @@ import androidx.work.WorkManager
 import com.example.data.OmnisBatchSyncScheduler
 import com.example.data.OmnisBatchSyncWorker
 import com.example.data.SyncLogManager
+import com.example.ui.localization.AppLanguage
+import com.example.ui.localization.AppLocaleManager
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -42,6 +44,8 @@ fun SyncStatusComponent(
     onOpenLogs: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val currentLang by AppLocaleManager.currentLanguage.collectAsStateWithLifecycle()
+    val isEnglish = currentLang == AppLanguage.EN
     val workManager = remember { WorkManager.getInstance(context) }
 
     val periodicInfos by workManager.getWorkInfosForUniqueWorkFlow(OmnisBatchSyncScheduler.PERIODIC_WORK_NAME)
@@ -75,18 +79,22 @@ fun SyncStatusComponent(
     val effectiveLastSuccessTime = maxOf(workSuccessTime, logLastSuccessTime ?: 0L)
 
     val statusText = when {
-        isRunning -> "Synchronizace probíhá..."
-        isEnqueued -> "Čeká na síťové připojení..."
-        isBlocked -> "Synchronizace pozastavena (čeká na podmínky)..."
-        hasFailed -> "Poslední synchronizace selhala (zkontrolujte logy)"
+        isRunning -> if (isEnglish) "Synchronizing..." else "Synchronizace probíhá..."
+        isEnqueued -> if (isEnglish) "Waiting for network connection..." else "Čeká na síťové připojení..."
+        isBlocked -> if (isEnglish) "Sync paused (waiting for constraints)..." else "Synchronizace pozastavena (čeká na podmínky)..."
+        hasFailed -> if (isEnglish) "Last sync failed (check logs)" else "Poslední synchronizace selhala (zkontrolujte záznamy)"
         lastSuccessWork != null || logLastSuccessTime != null -> {
             val payloadInfo = if (payloadBytes > 0L) {
                 if (payloadBytes < 1024L) " · $payloadBytes B"
                 else String.format(Locale.US, " · %.1f KB", payloadBytes / 1024.0)
             } else ""
-            "Synchronizováno (Dávka: $syncedCount záznamů$payloadInfo)"
+            if (isEnglish) {
+                "Synchronized (Batch: $syncedCount records$payloadInfo)"
+            } else {
+                "Synchronizováno (Dávka: $syncedCount záznamů$payloadInfo)"
+            }
         }
-        else -> "Připraveno k synchronizaci"
+        else -> if (isEnglish) "Ready to synchronize" else "Připraveno k synchronizaci"
     }
 
     val statusColor = when {
@@ -107,16 +115,17 @@ fun SyncStatusComponent(
 
     val badgeLabel = when {
         isRunning -> "SYNC"
-        isEnqueued -> "QUEUE"
-        isBlocked -> "WAIT"
-        hasFailed -> "FAIL"
+        isEnqueued -> if (isEnglish) "QUEUE" else "FRONTA"
+        isBlocked -> if (isEnglish) "WAIT" else "ČEKÁ"
+        hasFailed -> if (isEnglish) "FAIL" else "CHYBA"
         lastSuccessWork != null || logLastSuccessTime != null -> "OK"
-        else -> "READY"
+        else -> if (isEnglish) "READY" else "PŘIPRAVENO"
     }
 
     val dateFormat = remember { SimpleDateFormat("HH:mm:ss dd.MM.yyyy", Locale.getDefault()) }
-    val lastSuccessTimeStr = remember(effectiveLastSuccessTime) {
-        if (effectiveLastSuccessTime > 0L) dateFormat.format(Date(effectiveLastSuccessTime)) else "Žádná"
+    val lastSuccessTimeStr = remember(effectiveLastSuccessTime, isEnglish) {
+        if (effectiveLastSuccessTime > 0L) dateFormat.format(Date(effectiveLastSuccessTime))
+        else if (isEnglish) "None" else "Žádná"
     }
 
     Card(
@@ -159,7 +168,7 @@ fun SyncStatusComponent(
                     }
                     Column {
                         Text(
-                            text = "ElectricSQL / PostgreSQL Sync",
+                            text = if (isEnglish) "ElectricSQL / PostgreSQL Sync" else "Synchronizace ElectricSQL / PostgreSQL",
                             color = Color.White,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
@@ -183,7 +192,7 @@ fun SyncStatusComponent(
                     ) {
                         Icon(
                             imageVector = Icons.Default.History,
-                            contentDescription = "Historie synchronizace",
+                            contentDescription = if (isEnglish) "Sync history" else "Historie synchronizace",
                             tint = OmnisTextMuted
                         )
                     }
@@ -195,7 +204,7 @@ fun SyncStatusComponent(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Sync,
-                            contentDescription = "Spustit synchronizaci",
+                            contentDescription = if (isEnglish) "Run sync" else "Spustit synchronizaci",
                             tint = OmnisCyan
                         )
                     }
@@ -219,7 +228,7 @@ fun SyncStatusComponent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Poslední úspěšná synchronizace: $lastSuccessTimeStr",
+                    text = if (isEnglish) "Last successful sync: $lastSuccessTimeStr" else "Poslední úspěšná synchronizace: $lastSuccessTimeStr",
                     color = OmnisTextMuted,
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace

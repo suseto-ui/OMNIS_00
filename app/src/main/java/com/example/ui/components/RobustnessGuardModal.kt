@@ -56,7 +56,7 @@ fun RobustnessGuardModal(
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.Black)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Samo-opravná diagnostika", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Automatická diagnostika a oprava", color = Color.Black, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

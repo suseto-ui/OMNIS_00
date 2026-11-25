@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.example.auth.UserRole
 import com.example.data.ThreadSummary
 import com.example.ui.OmnisTab
+import com.example.ui.localization.OmnisStrings
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -409,7 +410,7 @@ fun UserDrawerContent(
             )
 
             UserDrawerItem(
-                title = "Scenario Architect",
+                title = OmnisStrings.tabTitle(OmnisTab.SCENARIOS),
                 icon = Icons.Default.Timeline,
                 selected = activeTab == OmnisTab.SCENARIOS,
                 tint = OmnisEmerald,
@@ -454,7 +455,7 @@ fun UserDrawerContent(
             )
 
             UserDrawerItem(
-                title = "Sync Diagnostic Logs",
+                title = OmnisStrings.tabTitle(OmnisTab.SYNC_LOGS),
                 icon = Icons.Default.CloudSync,
                 selected = activeTab == OmnisTab.SYNC_LOGS,
                 tint = OmnisCyan,

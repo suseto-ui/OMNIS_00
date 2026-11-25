@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.SyncLogEntry
 import com.example.data.SyncLogManager
+import com.example.ui.localization.AppLanguage
+import com.example.ui.localization.AppLocaleManager
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -38,6 +40,8 @@ fun SyncLogScreen(
 ) {
     BackHandler { onBack() }
 
+    val currentLang by AppLocaleManager.currentLanguage.collectAsStateWithLifecycle()
+    val isEnglish = currentLang == AppLanguage.EN
     val logs by SyncLogManager.logs.collectAsStateWithLifecycle()
     var filterMode by remember { mutableStateOf("ALL") }
 
@@ -86,20 +90,20 @@ fun SyncLogScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Zpět",
+                        contentDescription = if (isEnglish) "Back" else "Zpět",
                         tint = OmnisCyan
                     )
                 }
                 Column {
                     Text(
-                        text = "SYNC DIAGNOSTIC LOGS",
+                        text = if (isEnglish) "SYNC DIAGNOSTIC LOGS" else "DIAGNOSTIKA SYNCHRONIZACE",
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace
                     )
                     Text(
-                        text = "Historie synchronizací ElectricSQL & PostgreSQL 17",
+                        text = if (isEnglish) "ElectricSQL & PostgreSQL 17 Sync History" else "Historie synchronizací ElectricSQL a PostgreSQL 17",
                         color = OmnisTextMuted,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
@@ -115,7 +119,7 @@ fun SyncLogScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.ClearAll,
-                    contentDescription = "Vymazat logy",
+                    contentDescription = if (isEnglish) "Clear logs" else "Vymazat záznamy",
                     tint = OmnisRed
                 )
             }
@@ -123,7 +127,7 @@ fun SyncLogScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        SyncDiagnosticSummaryStrip(stats = stats)
+        SyncDiagnosticSummaryStrip(stats = stats, isEnglish = isEnglish)
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -136,19 +140,19 @@ fun SyncLogScreen(
             FilterChip(
                 selected = filterMode == "ALL",
                 onClick = { filterMode = "ALL" },
-                label = { Text("Všechny (${logs.size})") },
+                label = { Text(if (isEnglish) "All (${logs.size})" else "Všechny (${logs.size})") },
                 modifier = Modifier.testTag("chip_sync_all")
             )
             FilterChip(
                 selected = filterMode == "SUCCESS",
                 onClick = { filterMode = "SUCCESS" },
-                label = { Text("Úspěšné (${stats.succeededCount})") },
+                label = { Text(if (isEnglish) "Succeeded (${stats.succeededCount})" else "Úspěšné (${stats.succeededCount})") },
                 modifier = Modifier.testTag("chip_sync_success")
             )
             FilterChip(
                 selected = filterMode == "FAILURE",
                 onClick = { filterMode = "FAILURE" },
-                label = { Text("Chyby (${stats.totalRuns - stats.succeededCount})") },
+                label = { Text(if (isEnglish) "Failed (${stats.totalRuns - stats.succeededCount})" else "Chyby (${stats.totalRuns - stats.succeededCount})") },
                 modifier = Modifier.testTag("chip_sync_failure")
             )
         }
@@ -163,7 +167,7 @@ fun SyncLogScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Žádné záznamy synchronizace k zobrazení.",
+                    text = if (isEnglish) "No synchronization logs to display." else "Žádné záznamy synchronizace k zobrazení.",
                     color = OmnisTextMuted,
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace
@@ -177,7 +181,7 @@ fun SyncLogScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(filteredLogs, key = { it.id }) { entry ->
-                    SyncLogItemCard(entry, dateFormat)
+                    SyncLogItemCard(entry, dateFormat, isEnglish)
                 }
             }
         }
@@ -193,7 +197,7 @@ private data class SyncDiagnosticSummary(
 )
 
 @Composable
-private fun SyncDiagnosticSummaryStrip(stats: SyncDiagnosticSummary) {
+private fun SyncDiagnosticSummaryStrip(stats: SyncDiagnosticSummary, isEnglish: Boolean = false) {
     val totalPayloadText = remember(stats.totalPayloadBytes) {
         formatSyncPayloadBytes(stats.totalPayloadBytes)
     }
@@ -212,14 +216,14 @@ private fun SyncDiagnosticSummaryStrip(stats: SyncDiagnosticSummary) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SummaryMetricCell("OPERACÍ", "${stats.totalRuns}", Color.White)
+            SummaryMetricCell(if (isEnglish) "RUNS" else "OPERACÍ", "${stats.totalRuns}", Color.White)
             SummaryMetricCell(
-                "ÚSPĚŠNOST",
+                if (isEnglish) "SUCCESS" else "ÚSPĚŠNOST",
                 "${stats.successRatePercent}%",
                 if (stats.successRatePercent >= 80 || stats.totalRuns == 0) OmnisEmerald else OmnisAmber
             )
-            SummaryMetricCell("PŘENESENO", totalPayloadText, OmnisCyan)
-            SummaryMetricCell("PRŮM. ČAS", "${stats.avgDurationMs} ms", OmnisViolet)
+            SummaryMetricCell(if (isEnglish) "TRANSFERRED" else "PŘENESENO", totalPayloadText, OmnisCyan)
+            SummaryMetricCell(if (isEnglish) "AVG TIME" else "PRŮM. ČAS", "${stats.avgDurationMs} ms", OmnisViolet)
         }
     }
 }
@@ -251,7 +255,7 @@ private fun formatSyncPayloadBytes(bytes: Long): String {
 }
 
 @Composable
-fun SyncLogItemCard(entry: SyncLogEntry, dateFormat: SimpleDateFormat) {
+fun SyncLogItemCard(entry: SyncLogEntry, dateFormat: SimpleDateFormat, isEnglish: Boolean = false) {
     val statusColor = if (entry.success) OmnisEmerald else OmnisRed
     val statusIcon = if (entry.success) Icons.Default.CheckCircle else Icons.Default.Error
     val formattedTime = remember(entry.timestamp) { dateFormat.format(Date(entry.timestamp)) }
@@ -316,19 +320,19 @@ fun SyncLogItemCard(entry: SyncLogEntry, dateFormat: SimpleDateFormat) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Položky: ${entry.syncedCount}",
+                    text = if (isEnglish) "Items: ${entry.syncedCount}" else "Položky: ${entry.syncedCount}",
                     color = OmnisTextMuted,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "Čas: ${entry.durationMs} ms",
+                    text = if (isEnglish) "Time: ${entry.durationMs} ms" else "Čas: ${entry.durationMs} ms",
                     color = OmnisViolet,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "Payload: $payloadText",
+                    text = if (isEnglish) "Payload: $payloadText" else "Velikost dat: $payloadText",
                     color = OmnisCyan,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace

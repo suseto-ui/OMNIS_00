@@ -69,7 +69,7 @@ class ChatViewModel(private val repository: OmnisRepository) : ViewModel() {
             }
 
             val systemInstruction = """
-                Jsi O.M.N.I.S. v4.2, KYBER-AI EXPERT. Tvé odpovědi jsou technicky precizní a analytické.
+                Jsi O.M.N.I.S. v4.5, KYBER-AI EXPERT. Tvé odpovědi jsou technicky precizní a analytické.
                 Používej terminologii: tenzory, kognitivní grafy, entropie.
                 Zachovávej chladný, profesionální tón. Komunikuj v češtině.
                 $tokenModeMsg

@@ -311,13 +311,13 @@ private fun PurposePreviewSection() {
         ),
         PreviewTopic(
             title = "Souvislosti na jednom místě",
-            subtitle = "Místo roztříštěných poznámek vidíte okamžitý 8-směrný pohled na dopady vašeho nápadu nebo problému bez zbytečné informační vaty.",
+            subtitle = "Místo roztříštěných poznámek vidíte okamžitý 8-směrný pohled na dopady vašeho nápadu nebo problému bez zbytečné informační výplně.",
             icon = Icons.Default.Radar,
             accent = OmnisViolet
         ),
         PreviewTopic(
             title = "Soukromí a kontrolovaný přístup",
-            subtitle = "Každý účet prochází ručním schválením, aby pracovní prostor a konverzační vlákna zůstala čistá a chráněná.",
+            subtitle = "Každý účet prochází ručním schválením, aby pracovní prostředí i konverzační vlákna zůstaly bezpečné a přehledné.",
             icon = Icons.Default.Shield,
             accent = OmnisEmerald
         )
