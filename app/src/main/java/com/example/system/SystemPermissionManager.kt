@@ -32,7 +32,7 @@ object SystemPermissionManager {
             PermissionItemStatus(
                 permissionKey = Manifest.permission.INTERNET,
                 title = "Síťový přístup O.M.N.I.S.",
-                description = "Povolení pro bezpečné šifrované spojené s AI Studio a Firestore cloudem.",
+                description = "Povolení pro bezpečné šifrované spojení se serverem O.M.N.I.S. (PostgreSQL 17 & ElectricSQL).",
                 isGranted = true,
                 isRequired = true,
                 category = "KONEKTIVITA"

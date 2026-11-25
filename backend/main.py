@@ -382,10 +382,11 @@ app.add_middleware(
 async def add_owasp_security_headers(request, call_next):
     """Enforces strict OWASP security headers across all API responses."""
     response = await call_next(request)
-    response.headers["Content-Security-Policy"] = "default-src 'self' https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
@@ -431,7 +432,12 @@ app.include_router(inference_router)
 topology_router = APIRouter(prefix="/api/topology", tags=["Topological & Stability Metrics"])
 
 @topology_router.get("/metrics")
-async def get_topology_metrics(v: int = 8, e: int = 28, f: int = 8):
+async def get_topology_metrics(
+    v: int = 8,
+    e: int = 28,
+    f: int = 8,
+    _current_user: User = Depends(get_current_user),
+):
     """Vrací Eulerovu charakteristiku a Bettiho čísla kognitivního prostoru."""
     try:
         from backend.topology import calculate_euler_characteristic, calculate_betti_numbers
@@ -439,32 +445,44 @@ async def get_topology_metrics(v: int = 8, e: int = 28, f: int = 8):
         betti = calculate_betti_numbers(v, e, f)
         return {"status": "success", "euler_characteristic_chi": chi, "betti_numbers": betti}
     except Exception as exc:
-        return {"status": "error", "detail": str(exc)}
+        logger.warning("Topology metrics calculation error: %s", exc)
+        return {"status": "error", "detail": "Výpočet topologických metrik selhal."}
 
 @topology_router.post("/cascade-risk")
-async def evaluate_cascade_risk(payload: dict):
+async def evaluate_cascade_risk(
+    payload: dict,
+    _current_user: User = Depends(get_current_user),
+):
     """Vyhodnotí perkolační kaskádové riziko napříč doménami."""
     try:
         from backend.percolation import eval_cascade_risk
         status = eval_cascade_risk(payload.get("domains_status", {}))
         return {"status": "success", "cascade_status": status}
     except Exception as exc:
-        return {"status": "error", "detail": str(exc)}
+        logger.warning("Cascade risk evaluation error: %s", exc)
+        return {"status": "error", "detail": "Vyhodnocení kaskádového rizika selhalo."}
 
 @topology_router.get("/token-budget")
-async def get_token_budget_recommendation(sigma: float = 0.15):
+async def get_token_budget_recommendation(
+    sigma: float = 0.15,
+    _current_user: User = Depends(get_current_user),
+):
     """Vrátí adaptivní alokaci tokenů na základě systémového pnutí sigma."""
     try:
         from backend.token_manager import calculate_token_budget
         budget = calculate_token_budget(sigma)
         return {"status": "success", "sigma": sigma, "budget": budget}
     except Exception as exc:
-        return {"status": "error", "detail": str(exc)}
+        logger.warning("Token budget calculation error: %s", exc)
+        return {"status": "error", "detail": "Výpočet tokenového rozpočtu selhal."}
 
 app.include_router(topology_router)
 
 @app.post("/api/v1/inference/cascade", tags=["LLM Cascade"])
-async def run_unified_llm_cascade(payload: dict):
+async def run_unified_llm_cascade(
+    payload: dict,
+    _current_user: User = Depends(get_current_user),
+):
     """Jednotná LLM brána propojující lokální Gemma 4 (tools/gemma4/agent.yaml) s cloud failoverem a Circuit Breakerem."""
     from backend.app.llm_cascade import get_llm_cascade
 
@@ -475,7 +493,9 @@ async def run_unified_llm_cascade(payload: dict):
 
 
 @app.get("/api/v1/inference/cascade/status", tags=["LLM Cascade"])
-async def get_llm_cascade_status():
+async def get_llm_cascade_status(
+    _current_user: User = Depends(get_current_user),
+):
     """Vrací aktuální stav Circuit Breakerů a načtenou konfiguraci Gemma 4 agenta."""
     from backend.app.llm_cascade import get_llm_cascade
 

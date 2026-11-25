@@ -128,9 +128,13 @@ class OmnisRepository(
         records.chunked(chunkSize).forEach { chunk ->
             if (activeDb != null && activeOutbox != null) {
                 activeDb.withTransaction {
-                    dao.insertRecords(chunk)
-                    val outboxRows = chunk.filter { !it.isSyncedToPostgres }.map { rec ->
-                        toOutboxEntity(rec, rec.id)
+                    val insertedIds = dao.insertRecordsReturningIds(chunk)
+                    val outboxRows = chunk.mapIndexedNotNull { idx, rec ->
+                        if (rec.isSyncedToPostgres) null
+                        else {
+                            val resolvedId = if (rec.id > 0L) rec.id else insertedIds.getOrElse(idx) { 0L }
+                            toOutboxEntity(rec, resolvedId)
+                        }
                     }
                     if (outboxRows.isNotEmpty()) {
                         activeOutbox.insertAllIgnore(outboxRows)
@@ -155,22 +159,50 @@ class OmnisRepository(
         val activeOutbox = outboxDao ?: return Pair(0, "Outbox fronta není inicializována.")
         var totalSynced = 0
         var lastMessage = "Outbox fronta je prázdná."
+        var iteration = 0
         while (true) {
             val pending = activeOutbox.getPendingEntries(limit = 250)
             if (pending.isEmpty()) break
+            iteration++
+            val batchStart = System.currentTimeMillis()
+            val payloadBytes = pending.sumOf {
+                (it.idempotencyKey.length + it.entityType.length + it.sessionId.length +
+                    it.payloadJson.toByteArray(Charsets.UTF_8).size).toLong()
+            }
             val (syncedCount, msg) = com.example.data.sync.OmnisApiGatewayClient.syncOutboxBatchToGateway(pending)
+            val durationMs = System.currentTimeMillis() - batchStart
             lastMessage = msg
             if (syncedCount <= 0) {
                 pending.forEach { entry -> activeOutbox.markFailed(entry.id, msg.take(250)) }
+                SyncLogManager.logSync(
+                    taskType = "Manual Outbox Flush #$iteration",
+                    success = false,
+                    syncedCount = 0,
+                    payloadSizeBytes = payloadBytes,
+                    durationMs = durationMs,
+                    message = msg
+                )
                 break
             }
             val completed = pending.take(syncedCount)
+            val completedBytes = completed.sumOf {
+                (it.idempotencyKey.length + it.entityType.length + it.sessionId.length +
+                    it.payloadJson.toByteArray(Charsets.UTF_8).size).toLong()
+            }
             activeOutbox.markSynced(completed.map { it.id })
             val messageIds = completed.filter { it.entityType == "OMNIS_MESSAGE" && it.entityId > 0L }.map { it.entityId }
             if (messageIds.isNotEmpty()) {
                 dao.markRecordsAsSynced(messageIds)
             }
             totalSynced += completed.size
+            SyncLogManager.logSync(
+                taskType = "Manual Outbox Flush #$iteration",
+                success = true,
+                syncedCount = completed.size,
+                payloadSizeBytes = completedBytes,
+                durationMs = durationMs,
+                message = msg
+            )
             if (pending.size < 250) break
         }
         return Pair(totalSynced, lastMessage)
@@ -184,7 +216,14 @@ class OmnisRepository(
 
     suspend fun deleteFragment(id: Long) = dao.deleteFragment(id)
 
-    suspend fun pruneOldSyncedRecords(daysOld: Int): Int = 0
+    suspend fun pruneOldSyncedRecords(daysOld: Int): Int {
+        val cutoffTimestamp = if (daysOld <= 0) {
+            System.currentTimeMillis()
+        } else {
+            System.currentTimeMillis() - java.util.concurrent.TimeUnit.DAYS.toMillis(daysOld.toLong())
+        }
+        return dao.pruneOldSyncedRecords(cutoffTimestamp)
+    }
 
     suspend fun findSimilarRecords(query: String, limit: Int = 3): List<OmnisRecord> =
         dao.findSimilarRecords(query, limit)

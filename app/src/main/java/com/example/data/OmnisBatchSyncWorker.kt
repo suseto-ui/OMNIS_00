@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * WorkManager CoroutineWorker pro automatickou idempotentní dávkovou synchronizaci
- * z Room SQLite (Transactional Outbox + messages) do cloudového PostgreSQL/pgvector.
+ * z Room SQLite (Transactional Outbox + messages) do PostgreSQL 17 / ElectricSQL 1.8.1.
  */
 class OmnisBatchSyncWorker(
     appContext: Context,
@@ -28,10 +28,13 @@ class OmnisBatchSyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        SyncLogManager.init(applicationContext)
         val db = if (daoOverride == null) OmnisDatabase.getDatabase(applicationContext) else null
         val dao = daoOverride ?: db!!.omnisDao()
         val outboxDao = outboxDaoOverride ?: db?.outboxDao()
         var totalSynced = 0
+        var totalPayloadBytes = 0L
+        val runStartMs = System.currentTimeMillis()
 
         return try {
             // 1. Primární cesta: Idempotentní Transactional Outbox fronta (/api/v1/sync/batch)
@@ -41,17 +44,48 @@ class OmnisBatchSyncWorker(
                     val pending = outboxDao.getPendingEntries(OmnisCircuitBreaker.SYNC_BATCH_SIZE)
                     if (pending.isEmpty()) break
 
+                    val batchStartMs = System.currentTimeMillis()
+                    val batchPayloadBytes = pending.sumOf {
+                        (it.idempotencyKey.length + it.entityType.length + it.sessionId.length +
+                            it.payloadJson.toByteArray(Charsets.UTF_8).size).toLong()
+                    }
                     val (syncedCount, msg) = OmnisApiGatewayClient.syncOutboxBatchToGateway(pending)
+                    val batchDurationMs = System.currentTimeMillis() - batchStartMs
+
                     if (syncedCount <= 0) {
                         pending.forEach { entry -> outboxDao.markFailed(entry.id, msg.take(250)) }
+                        SyncLogManager.logSync(
+                            taskType = "Outbox Batch #${batchIteration + 1}",
+                            success = false,
+                            syncedCount = 0,
+                            payloadSizeBytes = batchPayloadBytes,
+                            durationMs = batchDurationMs,
+                            message = msg
+                        )
+                        TelemetryEngine.log(
+                            type = "WARNING",
+                            component = "BATCH_SYNC_WORKER",
+                            message = "Outbox dávka #${batchIteration + 1} selhala ($msg); položky zůstávají v Room."
+                        )
                         return if (totalSynced > 0) {
-                            Result.success(workDataOf(KEY_SYNCED_COUNT to totalSynced, KEY_PARTIAL to true))
+                            Result.success(
+                                workDataOf(
+                                    KEY_SYNCED_COUNT to totalSynced,
+                                    KEY_PAYLOAD_BYTES to totalPayloadBytes,
+                                    KEY_LAST_SYNC_TIME to System.currentTimeMillis(),
+                                    KEY_PARTIAL to true
+                                )
+                            )
                         } else {
                             Result.retry()
                         }
                     }
 
                     val completedEntries = pending.take(syncedCount)
+                    val completedBytes = completedEntries.sumOf {
+                        (it.idempotencyKey.length + it.entityType.length + it.sessionId.length +
+                            it.payloadJson.toByteArray(Charsets.UTF_8).size).toLong()
+                    }
                     outboxDao.markSynced(completedEntries.map { it.id })
                     val messageIds = completedEntries
                         .filter { it.entityType == "OMNIS_MESSAGE" && it.entityId > 0L }
@@ -60,6 +94,15 @@ class OmnisBatchSyncWorker(
                         dao.markRecordsAsSynced(messageIds)
                     }
                     totalSynced += completedEntries.size
+                    totalPayloadBytes += completedBytes
+                    SyncLogManager.logSync(
+                        taskType = "Outbox Batch #${batchIteration + 1}",
+                        success = true,
+                        syncedCount = completedEntries.size,
+                        payloadSizeBytes = completedBytes,
+                        durationMs = batchDurationMs,
+                        message = msg
+                    )
                     if (pending.size < OmnisCircuitBreaker.SYNC_BATCH_SIZE) break
                 }
             }
@@ -70,11 +113,19 @@ class OmnisBatchSyncWorker(
                 val unsynced = dao.getUnsyncedRecords(OmnisCircuitBreaker.SYNC_BATCH_SIZE)
                 if (unsynced.isEmpty()) break
 
+                val batchStartMs = System.currentTimeMillis()
+                val batchPayloadBytes = unsynced.sumOf { rec ->
+                    (rec.role.length + rec.domain.length + rec.threadId.length + rec.threadTitle.length +
+                        (rec.content + rec.cognitiveProcess + rec.followUpQuestions + rec.defenseNotes)
+                            .toByteArray(Charsets.UTF_8).size).toLong()
+                }
+
                 val uploadResult = batchUploaderOverride?.invoke(unsynced) ?: run {
                     val (count, msg) = OmnisApiGatewayClient.syncBatchToGateway(unsynced)
                     if (count > 0) ResultPair(true, count, msg)
                     else ResultPair(false, 0, msg)
                 }
+                val batchDurationMs = System.currentTimeMillis() - batchStartMs
 
                 if (!uploadResult.success || uploadResult.syncedCount <= 0) {
                     TelemetryEngine.log(
@@ -82,17 +133,47 @@ class OmnisBatchSyncWorker(
                         component = "BATCH_SYNC_WORKER",
                         message = "Dávková synchronizace pozastavena (${uploadResult.message}); záznamy zůstávají bezpečně v Room."
                     )
+                    SyncLogManager.logSync(
+                        taskType = "Direct Batch #${batchIteration + 1}",
+                        success = false,
+                        syncedCount = 0,
+                        payloadSizeBytes = batchPayloadBytes,
+                        durationMs = batchDurationMs,
+                        message = uploadResult.message
+                    )
                     return if (totalSynced > 0) {
-                        Result.success(workDataOf(KEY_SYNCED_COUNT to totalSynced, KEY_PARTIAL to true))
+                        Result.success(
+                            workDataOf(
+                                KEY_SYNCED_COUNT to totalSynced,
+                                KEY_PAYLOAD_BYTES to totalPayloadBytes,
+                                KEY_LAST_SYNC_TIME to System.currentTimeMillis(),
+                                KEY_PARTIAL to true
+                            )
+                        )
                     } else {
                         Result.retry()
                     }
                 }
 
-                val syncedIds = unsynced.take(uploadResult.syncedCount).map { it.id }
-                if (syncedIds.isNotEmpty()) {
-                    dao.markRecordsAsSynced(syncedIds)
-                    totalSynced += syncedIds.size
+                val completedRecords = unsynced.take(uploadResult.syncedCount)
+                val completedIds = completedRecords.map { it.id }
+                val completedBytes = completedRecords.sumOf { rec ->
+                    (rec.role.length + rec.domain.length + rec.threadId.length + rec.threadTitle.length +
+                        (rec.content + rec.cognitiveProcess + rec.followUpQuestions + rec.defenseNotes)
+                            .toByteArray(Charsets.UTF_8).size).toLong()
+                }
+                if (completedIds.isNotEmpty()) {
+                    dao.markRecordsAsSynced(completedIds)
+                    totalSynced += completedIds.size
+                    totalPayloadBytes += completedBytes
+                    SyncLogManager.logSync(
+                        taskType = "Direct Batch #${batchIteration + 1}",
+                        success = true,
+                        syncedCount = completedIds.size,
+                        payloadSizeBytes = completedBytes,
+                        durationMs = batchDurationMs,
+                        message = uploadResult.message
+                    )
                 }
                 if (unsynced.size < OmnisCircuitBreaker.SYNC_BATCH_SIZE) {
                     break
@@ -103,26 +184,35 @@ class OmnisBatchSyncWorker(
                 TelemetryEngine.log(
                     type = "INFO",
                     component = "BATCH_SYNC_WORKER",
-                    message = "WorkManager dávková synchronizace úspěšně uložila $totalSynced záznamů do cloudového pgvector backendu."
+                    message = "WorkManager dávková synchronizace úspěšně uložila $totalSynced záznamů ($totalPayloadBytes B) do PostgreSQL 17."
                 )
+            } else if (batchUploaderOverride == null) {
+                val checkStartMs = System.currentTimeMillis()
+                val (shapeOk, shapeBytes, shapeMsg) = OmnisApiGatewayClient.verifyElectricShapeConsistency()
+                val checkDurationMs = System.currentTimeMillis() - checkStartMs
                 SyncLogManager.logSync(
-                    taskType = "Outbox & Batch Sync",
-                    success = true,
-                    syncedCount = totalSynced,
-                    payloadSizeBytes = totalSynced * 512L,
-                    message = "Úspěšně synchronizováno $totalSynced položek do PostgreSQL 17 / ElectricSQL."
-                )
-            } else {
-                SyncLogManager.logSync(
-                    taskType = "Outbox & Batch Sync",
-                    success = true,
+                    taskType = "ElectricSQL Consistency Check",
+                    success = shapeOk,
                     syncedCount = 0,
-                    payloadSizeBytes = 0L,
-                    message = "Žádná nová data k synchronizaci (fronta je prázdná)."
+                    payloadSizeBytes = shapeBytes,
+                    durationMs = checkDurationMs,
+                    message = shapeMsg
                 )
+                if (!shapeOk) {
+                    return Result.retry()
+                }
             }
-            Result.success(workDataOf(KEY_SYNCED_COUNT to totalSynced, KEY_PARTIAL to false))
+            val completedAt = System.currentTimeMillis()
+            Result.success(
+                workDataOf(
+                    KEY_SYNCED_COUNT to totalSynced,
+                    KEY_PAYLOAD_BYTES to totalPayloadBytes,
+                    KEY_LAST_SYNC_TIME to completedAt,
+                    KEY_PARTIAL to false
+                )
+            )
         } catch (e: Exception) {
+            val totalDurationMs = System.currentTimeMillis() - runStartMs
             Log.w(TAG, "Výjimka při WorkManager synchronizaci: ${e.message}", e)
             TelemetryEngine.log(
                 type = "WARNING",
@@ -130,11 +220,12 @@ class OmnisBatchSyncWorker(
                 message = "Výjimka synchronizace (naplánován retry): ${e.localizedMessage ?: "Unknown"}"
             )
             SyncLogManager.logSync(
-                taskType = "Outbox & Batch Sync",
+                taskType = "WorkManager Sync Exception",
                 success = false,
                 syncedCount = totalSynced,
-                payloadSizeBytes = 0L,
-                message = "Chyba synchronizace: ${e.localizedMessage ?: "Unknown error"}"
+                payloadSizeBytes = totalPayloadBytes,
+                durationMs = totalDurationMs,
+                message = "Chyba synchronizace: ${e.localizedMessage ?: e.javaClass.simpleName}"
             )
             Result.retry()
         }
@@ -150,6 +241,8 @@ class OmnisBatchSyncWorker(
         private const val TAG = "OmnisBatchSyncWorker"
         private const val MAX_BATCHES_PER_RUN = 10
         const val KEY_SYNCED_COUNT = "synced_count"
+        const val KEY_PAYLOAD_BYTES = "payload_bytes"
+        const val KEY_LAST_SYNC_TIME = "last_sync_time"
         const val KEY_PARTIAL = "partial_sync"
 
         @Volatile

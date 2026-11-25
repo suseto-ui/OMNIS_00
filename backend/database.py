@@ -278,6 +278,10 @@ async def get_db() -> AsyncGenerator:
                 finally:
                     await session.close()
         except Exception as conn_err:
+            from backend.config import get_settings
+            if get_settings().is_production:
+                logger.error(f"Database connection unavailable in production: {conn_err}")
+                raise
             logger.warning(f"Database connection unavailable, falling back to mock session: {conn_err}")
             yield _MockSession()
     else:
@@ -497,15 +501,28 @@ async def hybrid_search_knowledge(
                         logger.debug(f"rag_memory_64d dense lookup fallback to vector_memories: {rag_err}")
 
                     if not dense_ranks:
-                        dense_sql = text("""
-                            SELECT id, content, memory_type, importance_score, metadata_json,
-                                   (embedding_64 <=> CAST(:query_vec AS vector)) as cosine_distance
-                            FROM vector_memories
-                            WHERE embedding_64 IS NOT NULL
-                            ORDER BY cosine_distance ASC
-                            LIMIT :search_limit;
-                        """)
-                        dense_res = await db.execute(dense_sql, {"query_vec": query_vec_str, "search_limit": limit * 2})
+                        if user_id:
+                            dense_sql = text("""
+                                SELECT vm.id, vm.content, vm.memory_type, vm.importance_score, vm.metadata_json,
+                                       (vm.embedding_64 <=> CAST(:query_vec AS vector)) as cosine_distance
+                                FROM vector_memories vm
+                                JOIN conversations c ON vm.conversation_id = c.id
+                                WHERE vm.embedding_64 IS NOT NULL AND c.user_id = :user_id
+                                ORDER BY cosine_distance ASC
+                                LIMIT :search_limit;
+                            """)
+                            dense_params = {"query_vec": query_vec_str, "user_id": user_id, "search_limit": limit * 2}
+                        else:
+                            dense_sql = text("""
+                                SELECT id, content, memory_type, importance_score, metadata_json,
+                                       (embedding_64 <=> CAST(:query_vec AS vector)) as cosine_distance
+                                FROM vector_memories
+                                WHERE embedding_64 IS NOT NULL
+                                ORDER BY cosine_distance ASC
+                                LIMIT :search_limit;
+                            """)
+                            dense_params = {"query_vec": query_vec_str, "search_limit": limit * 2}
+                        dense_res = await db.execute(dense_sql, dense_params)
                         for rank, row in enumerate(dense_res.fetchall(), start=1):
                             doc_id = str(row[0])
                             dense_ranks[doc_id] = rank
@@ -519,15 +536,28 @@ async def hybrid_search_knowledge(
                                     "cosine_distance": float(row[5] or 0.0),
                                 }
                 else:
-                    dense_sql = text("""
-                        SELECT id, content, memory_type, importance_score, metadata_json,
-                               (CAST(embedding AS text)::vector <=> CAST(:query_vec AS vector)) as cosine_distance
-                        FROM vector_memories
-                        WHERE embedding IS NOT NULL
-                        ORDER BY cosine_distance ASC
-                        LIMIT :search_limit;
-                    """)
-                    dense_res = await db.execute(dense_sql, {"query_vec": query_vec_str, "search_limit": limit * 2})
+                    if user_id:
+                        dense_sql = text("""
+                            SELECT vm.id, vm.content, vm.memory_type, vm.importance_score, vm.metadata_json,
+                                   (CAST(vm.embedding AS text)::vector <=> CAST(:query_vec AS vector)) as cosine_distance
+                            FROM vector_memories vm
+                            JOIN conversations c ON vm.conversation_id = c.id
+                            WHERE vm.embedding IS NOT NULL AND c.user_id = :user_id
+                            ORDER BY cosine_distance ASC
+                            LIMIT :search_limit;
+                        """)
+                        dense_params = {"query_vec": query_vec_str, "user_id": user_id, "search_limit": limit * 2}
+                    else:
+                        dense_sql = text("""
+                            SELECT id, content, memory_type, importance_score, metadata_json,
+                                   (CAST(embedding AS text)::vector <=> CAST(:query_vec AS vector)) as cosine_distance
+                            FROM vector_memories
+                            WHERE embedding IS NOT NULL
+                            ORDER BY cosine_distance ASC
+                            LIMIT :search_limit;
+                        """)
+                        dense_params = {"query_vec": query_vec_str, "search_limit": limit * 2}
+                    dense_res = await db.execute(dense_sql, dense_params)
                     for rank, row in enumerate(dense_res.fetchall(), start=1):
                         doc_id = str(row[0])
                         dense_ranks[doc_id] = rank
@@ -544,14 +574,25 @@ async def hybrid_search_knowledge(
             # 2. Textové / Sparse vyhledávání nad rag_memory_64d (pokud existuje) a vector_memories
             like_op = "ILIKE" if dialect_str != "sqlite" else "LIKE"
             try:
-                sparse_rag_sql = text(f"""
-                    SELECT id, content, domain, importance_score, metadata_json
-                    FROM rag_memory_64d
-                    WHERE content {like_op} :pattern
-                    ORDER BY importance_score DESC
-                    LIMIT :search_limit;
-                """)
-                sparse_rag_res = await db.execute(sparse_rag_sql, {"pattern": f"%{query_text}%", "search_limit": limit * 2})
+                if user_id:
+                    sparse_rag_sql = text(f"""
+                        SELECT id, content, domain, importance_score, metadata_json
+                        FROM rag_memory_64d
+                        WHERE user_id = :user_id AND content {like_op} :pattern
+                        ORDER BY importance_score DESC
+                        LIMIT :search_limit;
+                    """)
+                    sparse_rag_params = {"user_id": user_id, "pattern": f"%{query_text}%", "search_limit": limit * 2}
+                else:
+                    sparse_rag_sql = text(f"""
+                        SELECT id, content, domain, importance_score, metadata_json
+                        FROM rag_memory_64d
+                        WHERE content {like_op} :pattern
+                        ORDER BY importance_score DESC
+                        LIMIT :search_limit;
+                    """)
+                    sparse_rag_params = {"pattern": f"%{query_text}%", "search_limit": limit * 2}
+                sparse_rag_res = await db.execute(sparse_rag_sql, sparse_rag_params)
                 for rank, row in enumerate(sparse_rag_res.fetchall(), start=1):
                     doc_id = str(row[0])
                     sparse_ranks[doc_id] = rank
@@ -567,14 +608,26 @@ async def hybrid_search_knowledge(
             except Exception:
                 pass
 
-            sparse_sql = text(f"""
-                SELECT id, content, memory_type, importance_score, metadata_json
-                FROM vector_memories
-                WHERE content {like_op} :pattern
-                ORDER BY importance_score DESC
-                LIMIT :search_limit;
-            """)
-            sparse_res = await db.execute(sparse_sql, {"pattern": f"%{query_text}%", "search_limit": limit * 2})
+            if user_id:
+                sparse_sql = text(f"""
+                    SELECT vm.id, vm.content, vm.memory_type, vm.importance_score, vm.metadata_json
+                    FROM vector_memories vm
+                    JOIN conversations c ON vm.conversation_id = c.id
+                    WHERE c.user_id = :user_id AND vm.content {like_op} :pattern
+                    ORDER BY vm.importance_score DESC
+                    LIMIT :search_limit;
+                """)
+                sparse_params = {"user_id": user_id, "pattern": f"%{query_text}%", "search_limit": limit * 2}
+            else:
+                sparse_sql = text(f"""
+                    SELECT id, content, memory_type, importance_score, metadata_json
+                    FROM vector_memories
+                    WHERE content {like_op} :pattern
+                    ORDER BY importance_score DESC
+                    LIMIT :search_limit;
+                """)
+                sparse_params = {"pattern": f"%{query_text}%", "search_limit": limit * 2}
+            sparse_res = await db.execute(sparse_sql, sparse_params)
             for rank, row in enumerate(sparse_res.fetchall(), start=1):
                 doc_id = str(row[0])
                 if doc_id not in sparse_ranks:

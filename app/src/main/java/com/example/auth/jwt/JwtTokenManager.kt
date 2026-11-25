@@ -91,6 +91,19 @@ object JwtTokenManager {
         val headerPart = parts[0]
         val payloadPart = parts[1]
         val signaturePart = parts[2]
+        if (signaturePart.isBlank()) {
+            return JwtValidationResult.Malformed("JWT token musí obsahovat neprázdný podpis.")
+        }
+
+        try {
+            val headerJson = JSONObject(String(base64UrlDecode(headerPart), StandardCharsets.UTF_8))
+            val alg = headerJson.optString("alg", "")
+            if (!alg.equals("HS256", ignoreCase = false)) {
+                return JwtValidationResult.Malformed("Nepodporovaný JWT algoritmus: $alg")
+            }
+        } catch (e: Exception) {
+            return JwtValidationResult.Malformed("Neplatná hlavička JWT: ${e.message}")
+        }
 
         val signingInput = "$headerPart.$payloadPart"
         val expectedSignatureBytes = signHmacSha256(signingInput, key)
@@ -127,12 +140,18 @@ object JwtTokenManager {
     }
 
     /**
-     * Rychlé vyextrahování claims bez validace podpisu (pro UI účely).
+     * Rychlé vyextrahování claims bez lokální HMAC verifikace podpisu (pouze pro tokeny vydané důvěryhodným backendem).
+     * Odmítá nekompletní JWS nebo tokeny s alg="none".
      */
     fun parseClaimsUnverified(token: String): JwtClaims? {
         val parts = token.trim().split(".")
-        if (parts.size < 2) return null
+        if (parts.size != 3 || parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) return null
         return try {
+            val headerJson = JSONObject(String(base64UrlDecode(parts[0]), StandardCharsets.UTF_8))
+            val alg = headerJson.optString("alg", "").trim()
+            if (alg.isEmpty() || alg.equals("none", ignoreCase = true)) {
+                return null
+            }
             val payloadJsonString = String(base64UrlDecode(parts[1]), StandardCharsets.UTF_8)
             val json = JSONObject(payloadJsonString)
             JwtClaims(

@@ -295,6 +295,22 @@ async def sync_outbox_batch(
             body = {}
 
         if item.entity_type.strip().lower() == "omnis_message":
+            is_user_caller = caller.auth_method in ("jwt", "firebase_id_token")
+            if is_user_caller:
+                existing_res = await db.execute(
+                    select(OmnisSyncMessage).where(OmnisSyncMessage.id == item.entity_id)
+                )
+                existing_msg = existing_res.scalar_one_or_none()
+                if existing_msg is not None and existing_msg.user_name != caller.uid and not caller.is_admin:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Nelze přepsat synchronizovanou zprávu jiného uživatele.",
+                    )
+            resolved_user_name = (
+                caller.uid
+                if is_user_caller
+                else str(body.get("userName") if "userName" in body else body.get("user_name", caller.uid))
+            )
             msg = OmnisSyncMessage(
                 id=item.entity_id,
                 idempotency_key=item.idempotency_key,
@@ -319,7 +335,7 @@ async def sync_outbox_batch(
                 is_synced_to_postgres=True,
                 thread_id=str(body.get("threadId") if "threadId" in body else body.get("thread_id", item.session_id)),
                 thread_title=str(body.get("threadTitle") if "threadTitle" in body else body.get("thread_title", "Hlavní vlákno")),
-                user_name=str(body.get("userName") if "userName" in body else body.get("user_name", caller.uid)),
+                user_name=resolved_user_name,
             )
             await db.merge(msg)
         synced += 1
@@ -352,8 +368,19 @@ async def sync_messages_batch(
     items = payload.messages or payload.records or []
     synced = 0
 
+    is_user_caller = caller.auth_method in ("jwt", "firebase_id_token")
     for item in items:
         try:
+            if is_user_caller:
+                existing_res = await db.execute(
+                    select(OmnisSyncMessage).where(OmnisSyncMessage.id == item.id)
+                )
+                existing_msg = existing_res.scalar_one_or_none()
+                if existing_msg is not None and existing_msg.user_name != caller.uid and not caller.is_admin:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Nelze přepsat synchronizovanou zprávu jiného uživatele.",
+                    )
             msg = OmnisSyncMessage(
                 id=item.id,
                 idempotency_key=item.idempotency_key,
@@ -378,10 +405,12 @@ async def sync_messages_batch(
                 is_synced_to_postgres=True,
                 thread_id=item.thread_id,
                 thread_title=item.thread_title,
-                user_name=item.user_name,
+                user_name=caller.uid if is_user_caller else item.user_name,
             )
             await db.merge(msg)
             synced += 1
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Chyba při ukládání zprávy {item.id}: {e}")
 
@@ -410,8 +439,19 @@ async def sync_memory_batch(
     items = payload.fragments or []
     synced = 0
 
+    is_user_caller = caller.auth_method in ("jwt", "firebase_id_token")
     for item in items:
         try:
+            if is_user_caller:
+                existing_res = await db.execute(
+                    select(OmnisSyncMemory).where(OmnisSyncMemory.id == item.id)
+                )
+                existing_mem = existing_res.scalar_one_or_none()
+                if existing_mem is not None and existing_mem.user_name != caller.uid and not caller.is_admin:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Nelze přepsat paměťový fragment jiného uživatele.",
+                    )
             content_text = item.content or f"{item.title or ''} {item.summary or ''}".strip()
             vec_64 = item.embedding_64 if (item.embedding_64 and len(item.embedding_64) == 64) else None
             mem = OmnisSyncMemory(
@@ -430,10 +470,12 @@ async def sync_memory_batch(
                 val_soc=item.val_soc,
                 importance_score=item.importance_score,
                 timestamp=item.timestamp,
-                user_name=item.user_name,
+                user_name=caller.uid if is_user_caller else item.user_name,
             )
             await db.merge(mem)
             synced += 1
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Chyba při ukládání paměťového fragmentu {item.id}: {e}")
 

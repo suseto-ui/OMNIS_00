@@ -8,7 +8,9 @@ from __future__ import annotations
 import re
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from backend.auth_router import get_current_user
+from backend.models import User
 
 apex_router = APIRouter(prefix="/api/apex", tags=["Apex Orchestrator"])
 
@@ -156,7 +158,7 @@ class ApexOrchestratorEngineBackend:
             candidate = (
                 f"<scratchpad>\n{scratchpad_body}\n</scratchpad>\n"
                 f"ROZHODNUTÍ O.M.N.I.S. APEX: Aplikovat hybridní architektonický model "
-                f"(Firestore real-time relace + PostgreSQL pgvector HNSW index). "
+                f"(ElectricSQL 1.8.1 real-time replikace + PostgreSQL 17 pgvector HNSW index). "
                 f"Tím se dosáhne nulové latence u klienta a absolutní sémantické přesnosti v 64D tenzorové paměti."
             )
 
@@ -174,7 +176,10 @@ class ApexOrchestratorEngineBackend:
         }
 
 @apex_router.post("/execute", response_model=ApexOrchestrationResponse)
-async def execute_apex_pipeline(request: ApexOrchestrationRequest):
+async def execute_apex_pipeline(
+    request: ApexOrchestrationRequest,
+    _current_user: User = Depends(get_current_user),
+):
     """
     Spouští APEX Master Execution Protocol se skrytým scratchpadem a výstupní Zero-Fluff sanitizací.
     """

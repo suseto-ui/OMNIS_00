@@ -165,7 +165,19 @@ object CloudSqlSyncManager {
         if (conn == null) {
             val reason = "Přímé PostgreSQL JDBC spojení nedostupné; data bezpečně uložena v Room Outboxu."
             _syncStatus.value = SyncStatus.Offline(reason, unsynced.size)
+            SyncLogManager.logSync(
+                taskType = "PostgreSQL 17 Direct JDBC",
+                success = false,
+                syncedCount = 0,
+                payloadSizeBytes = 0L,
+                message = reason
+            )
             return@withContext Result.failure(IllegalStateException(reason))
+        }
+        val batchStartMs = System.currentTimeMillis()
+        val payloadBytes = unsynced.sumOf { rec ->
+            (rec.content + rec.cognitiveProcess + rec.followUpQuestions + rec.defenseNotes)
+                .toByteArray(Charsets.UTF_8).size.toLong()
         }
 
         try {
@@ -233,13 +245,31 @@ object CloudSqlSyncManager {
             val syncedIds = unsynced.map { it.id }
             dao.markRecordsAsSynced(syncedIds)
 
+            val durationMs = System.currentTimeMillis() - batchStartMs
             _syncStatus.value = SyncStatus.Success(syncedIds.size, System.currentTimeMillis())
             Log.i(TAG, "Úspěšně dávkově synchronizováno ${syncedIds.size} záznamů do PostgreSQL 17.")
+            SyncLogManager.logSync(
+                taskType = "PostgreSQL 17 Direct JDBC",
+                success = true,
+                syncedCount = syncedIds.size,
+                payloadSizeBytes = payloadBytes,
+                durationMs = durationMs,
+                message = "Dávkově synchronizováno ${syncedIds.size} záznamů přes JDBC."
+            )
             Result.success(syncedIds.size)
         } catch (e: Exception) {
+            val durationMs = System.currentTimeMillis() - batchStartMs
             val errorMsg = "Chyba dávkové synchronizace do PostgreSQL 17: ${e.message}"
             Log.w(TAG, errorMsg, e)
             _syncStatus.value = SyncStatus.Offline(errorMsg, unsynced.size)
+            SyncLogManager.logSync(
+                taskType = "PostgreSQL 17 Direct JDBC",
+                success = false,
+                syncedCount = 0,
+                payloadSizeBytes = payloadBytes,
+                durationMs = durationMs,
+                message = errorMsg
+            )
             Result.failure(e)
         } finally {
             try {
@@ -260,7 +290,7 @@ object CloudSqlSyncManager {
                 attempt++
                 val conn = getConnection()
                 if (conn == null) {
-                    Log.w(TAG, "Cloud SQL connection offline on attempt $attempt. Retrying with backoff...")
+                    Log.w(TAG, "PostgreSQL 17 JDBC connection offline on attempt $attempt. Retrying with backoff...")
                     if (attempt < MAX_RETRY_ATTEMPTS) {
                         val backoffMs = (200L * (1L shl (attempt - 1))) + Random.nextLong(50, 150)
                         delay(backoffMs)
@@ -326,20 +356,20 @@ object CloudSqlSyncManager {
 
                     pstmt.executeUpdate()
                     pstmt.close()
-                    Log.i(TAG, "Successfully synced record #${record.id} to Google Cloud SQL (attempt $attempt).")
+                    Log.i(TAG, "Successfully synced record #${record.id} to PostgreSQL 17 (attempt $attempt).")
                     success = true
                     
                     // Označit jako synchronizováno v lokální Room DB
                     dao?.markRecordsAsSynced(listOf(record.id))
                     _syncStatus.value = SyncStatus.Success(1, System.currentTimeMillis())
                 } catch (e: java.sql.SQLException) {
-                    Log.w(TAG, "SQLException during record sync to Google Cloud SQL (attempt $attempt): ${e.message}")
+                    Log.w(TAG, "SQLException during record sync to PostgreSQL 17 (attempt $attempt): ${e.message}")
                     if (attempt < MAX_RETRY_ATTEMPTS) {
                         val backoffMs = (250L * (1L shl (attempt - 1))) + Random.nextLong(50, 150)
                         delay(backoffMs)
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to sync record #${record.id} to Google Cloud SQL (attempt $attempt): ${e.message}")
+                    Log.w(TAG, "Failed to sync record #${record.id} to PostgreSQL 17 (attempt $attempt): ${e.message}")
                     if (attempt < MAX_RETRY_ATTEMPTS) {
                         val backoffMs = (250L * (1L shl (attempt - 1))) + Random.nextLong(50, 150)
                         delay(backoffMs)

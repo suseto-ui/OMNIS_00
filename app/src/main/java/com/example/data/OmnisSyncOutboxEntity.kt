@@ -9,7 +9,7 @@ import java.util.UUID
 
 /**
  * Transactional Outbox pro garantovanou idempotentní synchronizaci lokálních záznamů
- * do Cloud SQL PostgreSQL (/api/v1/sync/batch) bez ztráty dat při výpadku sítě.
+ * do PostgreSQL 17 / ElectricSQL (/api/v1/sync/batch) bez ztráty dat při výpadku sítě.
  */
 @Immutable
 @Entity(

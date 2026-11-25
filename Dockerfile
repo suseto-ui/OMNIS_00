@@ -1,5 +1,5 @@
 # ==============================================================================
-# O.M.N.I.S. - Production Multi-Stage Dockerfile for Google Cloud Run
+# O.M.N.I.S. - Production Multi-Stage Dockerfile for Sovereign Backend Runner
 # ==============================================================================
 
 # --- FÁZE 1: Backend Builder (Instalace závislostí do virtuálního prostředí) ---

@@ -212,10 +212,10 @@ object SemanticQuerySynthesizer {
                     contextModifier = "s ořezáním kontextového okna pro minimální spotřebu tokenů"
                 ),
                 RefinementOption(
-                    label = "Firestore limity",
-                    intentKey = "ECON_FIRESTORE",
+                    label = "PG17 & Sync limity",
+                    intentKey = "ECON_PG_SYNC",
                     domain = "ECON",
-                    contextModifier = "s využitím paginovaných dotazů a limitů čtení v Cloud Firestore"
+                    contextModifier = "s využitím paginovaných dotazů a dávkové synchronizace v PostgreSQL 17"
                 ),
                 RefinementOption(
                     label = "0-Cost režim",

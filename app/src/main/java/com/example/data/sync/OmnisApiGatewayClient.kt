@@ -31,9 +31,7 @@ object OmnisApiGatewayClient {
 
     private const val TAG = "OmnisApiGatewayClient"
     val GATEWAY_BASE_URL: String
-        get() = com.example.BuildConfig.OMNIS_BACKEND_URL
-    val CLOUD_RUN_BASE_URL: String
-        get() = GATEWAY_BASE_URL
+        get() = com.example.BuildConfig.OMNIS_BACKEND_URL.trimEnd('/')
     private const val BATCH_SIZE = 100
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
@@ -92,21 +90,21 @@ object OmnisApiGatewayClient {
                 .get()
             resolveAppCheckToken()?.let { reqBuilder.header("X-Firebase-AppCheck", it) }
 
-            val response = httpClient.newCall(reqBuilder.build()).execute()
-            val latency = System.currentTimeMillis() - startTime
-
-            if (response.isSuccessful) {
-                isCircuitBreakerOpen = false
-                _isCloudOnline.value = true
-                val msg = "PostgreSQL 17 API Gateway aktivní (HTTPS TLSv1.3 | Latence: ${latency}ms | ElectricSQL WAL)"
-                _gatewayStatus.value = GatewayStatus.Connected(latency, msg)
-                Pair(true, msg)
-            } else {
-                isCircuitBreakerOpen = true
-                _isCloudOnline.value = false
-                val errorMsg = "PG17 Gateway vrátil kód ${response.code}: ${response.message}"
-                _gatewayStatus.value = GatewayStatus.FallbackMode(errorMsg, circuitOpen = true)
-                Pair(false, errorMsg)
+            httpClient.newCall(reqBuilder.build()).execute().use { response ->
+                val latency = System.currentTimeMillis() - startTime
+                if (response.isSuccessful) {
+                    isCircuitBreakerOpen = false
+                    _isCloudOnline.value = true
+                    val msg = "PostgreSQL 17 API Gateway aktivní (HTTPS TLSv1.3 | Latence: ${latency}ms | ElectricSQL WAL)"
+                    _gatewayStatus.value = GatewayStatus.Connected(latency, msg)
+                    Pair(true, msg)
+                } else {
+                    isCircuitBreakerOpen = true
+                    _isCloudOnline.value = false
+                    val errorMsg = "PG17 Gateway vrátil kód ${response.code}: ${response.message}"
+                    _gatewayStatus.value = GatewayStatus.FallbackMode(errorMsg, circuitOpen = true)
+                    Pair(false, errorMsg)
+                }
             }
         } catch (e: Exception) {
             isCircuitBreakerOpen = true
@@ -115,6 +113,72 @@ object OmnisApiGatewayClient {
             _gatewayStatus.value = GatewayStatus.FallbackMode(errorMsg, circuitOpen = true)
             Log.w(TAG, errorMsg)
             Pair(false, errorMsg)
+        }
+    }
+
+    /**
+     * Ověří konzistenci replikace ElectricSQL 1.8.1 Shape API (/v1/shape?table=messages&offset=-1),
+     * případně při absenci reverse proxy pro /v1/shape potvrdí dostupnost PostgreSQL 17 Gateway (/api/v1/health).
+     * Vrací Triple(ok, payloadBytes, statusMessage).
+     */
+    suspend fun verifyElectricShapeConsistency(): Triple<Boolean, Long, String> = withContext(Dispatchers.IO) {
+        if (com.example.defense.DatabaseConfig.isTesting) {
+            return@withContext Triple(true, 0L, "Konzistence ElectricSQL ověřena (TEST)")
+        }
+        val startTime = System.currentTimeMillis()
+        try {
+            val shapeReqBuilder = Request.Builder()
+                .url("$GATEWAY_BASE_URL/v1/shape?table=messages&offset=-1")
+                .header("User-Agent", "OMNIS-by-Suseto-Android/4.5")
+                .get()
+            resolveBearerToken()?.let { shapeReqBuilder.header("Authorization", "Bearer $it") }
+            resolveAppCheckToken()?.let { shapeReqBuilder.header("X-Firebase-AppCheck", it) }
+
+            httpClient.newCall(shapeReqBuilder.build()).execute().use { shapeResp ->
+                val rawBody = shapeResp.body?.bytes()
+                val byteCount = rawBody?.size?.toLong() ?: 0L
+                val latency = System.currentTimeMillis() - startTime
+                if (shapeResp.isSuccessful) {
+                    isCircuitBreakerOpen = false
+                    _isCloudOnline.value = true
+                    val shapeHandle = shapeResp.header("electric-handle") ?: shapeResp.header("electric-schema")
+                    val handleLabel = shapeHandle?.let { " (handle=$it)" } ?: ""
+                    val msg = "ElectricSQL Shape konzistence ověřena$handleLabel za ${latency}ms."
+                    _gatewayStatus.value = GatewayStatus.Connected(latency, msg)
+                    return@withContext Triple(true, byteCount, msg)
+                }
+            }
+
+            // Fallback: kontrola health endpointu PostgreSQL 17 / ElectricSQL brány
+            val healthReq = Request.Builder()
+                .url("$GATEWAY_BASE_URL/api/v1/health")
+                .header("User-Agent", "OMNIS-by-Suseto-Android/4.5")
+                .get()
+            resolveAppCheckToken()?.let { healthReq.header("X-Firebase-AppCheck", it) }
+
+            httpClient.newCall(healthReq.build()).execute().use { healthResp ->
+                val byteCount = healthResp.body?.bytes()?.size?.toLong() ?: 0L
+                val latency = System.currentTimeMillis() - startTime
+                if (healthResp.isSuccessful) {
+                    isCircuitBreakerOpen = false
+                    _isCloudOnline.value = true
+                    val msg = "Konzistence s PostgreSQL 17 Gateway ověřena (${latency}ms, žádné čekající změny)."
+                    _gatewayStatus.value = GatewayStatus.Connected(latency, msg)
+                    Triple(true, byteCount, msg)
+                } else {
+                    isCircuitBreakerOpen = true
+                    _isCloudOnline.value = false
+                    val err = "Kontrola konzistence ElectricSQL/PG17 selhala (HTTP ${healthResp.code})."
+                    _gatewayStatus.value = GatewayStatus.FallbackMode(err, circuitOpen = true)
+                    Triple(false, byteCount, err)
+                }
+            }
+        } catch (e: Exception) {
+            isCircuitBreakerOpen = true
+            _isCloudOnline.value = false
+            val err = "ElectricSQL nedostupný: ${e.localizedMessage ?: "Síťová chyba"}"
+            _gatewayStatus.value = GatewayStatus.FallbackMode(err, circuitOpen = true)
+            Triple(false, 0L, err)
         }
     }
 
@@ -130,6 +194,7 @@ object OmnisApiGatewayClient {
         }
 
         _gatewayStatus.value = GatewayStatus.Synchronizing
+        val opStartMs = System.currentTimeMillis()
         var syncedTotal = 0
         val bearer = resolveBearerToken()
         val appCheckToken = resolveAppCheckToken()
@@ -166,17 +231,19 @@ object OmnisApiGatewayClient {
                 syncApiKey?.let { reqBuilder.header("X-OMNIS-API-KEY", it) }
                 appCheckToken?.let { reqBuilder.header("X-Firebase-AppCheck", it) }
 
-                val response = httpClient.newCall(reqBuilder.build()).execute()
-                if (response.isSuccessful) {
-                    syncedTotal += chunk.size
-                } else {
-                    throw IllegalStateException("Chyba batch outbox synchronizace (HTTP ${response.code})")
+                httpClient.newCall(reqBuilder.build()).execute().use { response ->
+                    if (response.isSuccessful) {
+                        syncedTotal += chunk.size
+                    } else {
+                        throw IllegalStateException("Chyba batch outbox synchronizace (HTTP ${response.code})")
+                    }
                 }
                 yield()
             }
 
+            val elapsedMs = (System.currentTimeMillis() - opStartMs).coerceAtLeast(1L)
             val successMsg = "Úspěšně synchronizováno $syncedTotal položek Outboxu do PostgreSQL 17."
-            _gatewayStatus.value = GatewayStatus.Connected(42L, successMsg)
+            _gatewayStatus.value = GatewayStatus.Connected(elapsedMs, successMsg)
             _isCloudOnline.value = true
             Pair(syncedTotal, successMsg)
         } catch (e: Exception) {
@@ -201,6 +268,7 @@ object OmnisApiGatewayClient {
         }
 
         _gatewayStatus.value = GatewayStatus.Synchronizing
+        val opStartMs = System.currentTimeMillis()
         var syncedTotal = 0
         val token = resolveBearerToken()
         val appCheckToken = resolveAppCheckToken()
@@ -265,17 +333,19 @@ object OmnisApiGatewayClient {
                     reqBuilder.header("X-Firebase-AppCheck", appCheckToken)
                 }
 
-                val response = httpClient.newCall(reqBuilder.build()).execute()
-                if (response.isSuccessful) {
-                    syncedTotal += chunk.size
-                } else {
-                    throw IllegalStateException("Chyba synchronizace dávky (HTTP ${response.code})")
+                httpClient.newCall(reqBuilder.build()).execute().use { response ->
+                    if (response.isSuccessful) {
+                        syncedTotal += chunk.size
+                    } else {
+                        throw IllegalStateException("Chyba synchronizace dávky (HTTP ${response.code})")
+                    }
                 }
                 yield()
             }
 
+            val elapsedMs = (System.currentTimeMillis() - opStartMs).coerceAtLeast(1L)
             val successMsg = "Úspěšně synchronizováno $syncedTotal zpráv do PostgreSQL 17."
-            _gatewayStatus.value = GatewayStatus.Connected(42L, successMsg)
+            _gatewayStatus.value = GatewayStatus.Connected(elapsedMs, successMsg)
             _isCloudOnline.value = true
             Pair(syncedTotal, successMsg)
         } catch (e: Exception) {

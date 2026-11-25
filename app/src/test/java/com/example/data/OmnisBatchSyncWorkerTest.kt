@@ -41,12 +41,14 @@ class OmnisBatchSyncWorkerTest {
         dao = db.omnisDao()
         OmnisBatchSyncWorker.daoOverride = dao
         OmnisBatchSyncWorker.batchUploaderOverride = null
+        SyncLogManager.resetForTesting()
     }
 
     @After
     fun tearDown() {
         OmnisBatchSyncWorker.daoOverride = null
         OmnisBatchSyncWorker.batchUploaderOverride = null
+        SyncLogManager.resetForTesting()
         db.close()
     }
 
@@ -114,9 +116,52 @@ class OmnisBatchSyncWorkerTest {
         val result = worker.doWork()
 
         assertTrue(result is ListenableWorker.Result.Success)
+        val successResult = result as ListenableWorker.Result.Success
+        val outputPayloadBytes = successResult.outputData.getLong(OmnisBatchSyncWorker.KEY_PAYLOAD_BYTES, 0L)
+        val outputSyncTime = successResult.outputData.getLong(OmnisBatchSyncWorker.KEY_LAST_SYNC_TIME, 0L)
+        assertTrue(outputPayloadBytes > 0L)
+        assertTrue(outputSyncTime > 0L)
+        assertEquals(250, successResult.outputData.getInt(OmnisBatchSyncWorker.KEY_SYNCED_COUNT, 0))
         assertEquals(1, uploadedBatches)
         assertEquals(250, uploadedTotal)
         assertEquals(0, dao.getUnsyncedCount())
+
+        val logs = SyncLogManager.logs.value
+        assertEquals(1, logs.size)
+        assertTrue(logs.first().success)
+        assertEquals(250, logs.first().syncedCount)
+        assertEquals(outputPayloadBytes, logs.first().payloadSizeBytes)
+        assertEquals("Synced 250", logs.first().message)
+    }
+
+    @Test
+    fun batchSyncWorkerLogsFailureAndReturnsRetryWhenUploaderFails() = runBlocking {
+        val failingBatch = listOf(
+            OmnisRecord(
+                role = "user",
+                content = "Záznam pro test selhání sítě žluťoučký kůň",
+                domain = "SECURITY",
+                isSyncedToPostgres = false
+            )
+        )
+        dao.insertRecords(failingBatch)
+
+        OmnisBatchSyncWorker.batchUploaderOverride = {
+            OmnisBatchSyncWorker.ResultPair(false, 0, "HTTP 503 ElectricSQL nedostupný")
+        }
+
+        val worker = TestListenableWorkerBuilder<OmnisBatchSyncWorker>(context).build()
+        val result = worker.doWork()
+
+        assertTrue(result is ListenableWorker.Result.Retry)
+        assertEquals(1, dao.getUnsyncedCount())
+
+        val logs = SyncLogManager.logs.value
+        assertEquals(1, logs.size)
+        assertFalse(logs.first().success)
+        assertEquals(0, logs.first().syncedCount)
+        assertEquals("HTTP 503 ElectricSQL nedostupný", logs.first().message)
+        assertTrue(logs.first().payloadSizeBytes > 0L)
     }
 
     @Test
@@ -140,5 +185,67 @@ class OmnisBatchSyncWorkerTest {
 
         outboxDao.markSynced(listOf(pending.first().id))
         assertEquals(0, outboxDao.getPendingCount())
+    }
+
+    @Test
+    fun repositoryInsertBatched_assignsEntityIdsAndPrunesOnlyOldSyncedRecords() = runBlocking {
+        val outboxDao = db.outboxDao()
+        val repo = OmnisRepository(dao, outboxDao, db)
+        val now = System.currentTimeMillis()
+        val oldTimestamp = now - java.util.concurrent.TimeUnit.DAYS.toMillis(20)
+
+        repo.insertRecordsBatched(
+            listOf(
+                OmnisRecord(
+                    role = "user",
+                    content = "Unsynced batch item",
+                    threadId = "thread_batch",
+                    timestamp = oldTimestamp,
+                    isSyncedToPostgres = false
+                ),
+                OmnisRecord(
+                    role = "assistant",
+                    content = "Old synced batch item",
+                    threadId = "thread_batch",
+                    timestamp = oldTimestamp,
+                    isSyncedToPostgres = true
+                ),
+                OmnisRecord(
+                    role = "assistant",
+                    content = "Recent synced batch item",
+                    threadId = "thread_batch",
+                    timestamp = now,
+                    isSyncedToPostgres = true
+                )
+            )
+        )
+
+        val pending = outboxDao.getPendingEntries()
+        assertEquals(1, pending.size)
+        assertTrue("Outbox entityId musí mít skutečné ID z Room DB", pending.first().entityId > 0L)
+
+        val pruned = repo.pruneOldSyncedRecords(daysOld = 14)
+        assertEquals(1, pruned)
+        assertEquals(2, dao.getRecordCount())
+    }
+
+    @Test
+    fun syncLogManager_persistsLogsAndLastSyncTimeIntoPreferences() {
+        SyncLogManager.init(context)
+        SyncLogManager.logSync(
+            taskType = "ElectricSQL Shape Check",
+            success = true,
+            syncedCount = 12,
+            payloadSizeBytes = 2048L,
+            durationMs = 37L,
+            message = "Synchronizace dokončena"
+        )
+
+        val sp = context.getSharedPreferences("omnis_sync_logs_prefs", Context.MODE_PRIVATE)
+        val savedJson = sp.getString("sync_logs_json", null)
+        val savedTime = sp.getLong("last_successful_sync_time", 0L)
+        assertTrue(!savedJson.isNullOrBlank())
+        assertTrue(savedJson!!.contains("ElectricSQL Shape Check"))
+        assertTrue(savedTime > 0L)
     }
 }

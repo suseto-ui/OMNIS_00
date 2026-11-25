@@ -139,6 +139,9 @@ object DatabaseConfig {
                 break
             }
         }
+        if (sslParams.isEmpty() && currentHost !in listOf("localhost", "127.0.0.1", "::1")) {
+            sslParams = "?sslmode=require"
+        }
 
         val url = "jdbc:postgresql://$currentHost:$port/$dbName$sslParams"
         return try {

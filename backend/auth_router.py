@@ -72,11 +72,15 @@ def _verify_google_or_firebase_token(raw_token: str) -> dict:
         try:
             return id_token.verify_oauth2_token(raw_token, transport_req, GOOGLE_CLIENT_ID)
         except ValueError as oauth_err:
-            try:
-                return id_token.verify_firebase_token(raw_token, transport_req, audience=FIREBASE_PROJECT_ID)
-            except ValueError:
-                raise oauth_err
-    return id_token.verify_firebase_token(raw_token, transport_req, audience=FIREBASE_PROJECT_ID)
+            if FIREBASE_PROJECT_ID:
+                try:
+                    return id_token.verify_firebase_token(raw_token, transport_req, audience=FIREBASE_PROJECT_ID)
+                except ValueError:
+                    raise oauth_err
+            raise oauth_err
+    if FIREBASE_PROJECT_ID:
+        return id_token.verify_firebase_token(raw_token, transport_req, audience=FIREBASE_PROJECT_ID)
+    raise ValueError("GOOGLE_CLIENT_ID nebo FIREBASE_PROJECT_ID není nakonfigurováno.")
 
 
 def _is_root_admin_email(email: str | None) -> bool:
@@ -102,7 +106,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Uživatelský účet byl deaktivován.")
-    if not user.is_approved and not _is_root_admin_email(user.email):
+    if not user.is_approved:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Váš účet čeká na schválení administrátorem.")
     return user
 
@@ -116,7 +120,12 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
     if len(user_in.password) < 6:
         raise HTTPException(status_code=400, detail="Heslo musí mít alespoň 6 znaků.")
 
-    is_admin = _is_root_admin_email(clean_email)
+    if _is_root_admin_email(clean_email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Účet hlavního administrátora vyžaduje ověřené přihlášení přes Google Sign-In.",
+        )
+
     hashed_pw = get_password_hash(user_in.password)
 
     if is_mock_session(db):
@@ -134,9 +143,9 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
             username=clean_username,
             email=clean_email,
             hashed_password=hashed_pw,
-            role="ADMIN_OPERATOR" if is_admin else "STANDARD_USER",
+            role="STANDARD_USER",
             is_active=True,
-            is_approved=True if is_admin else False,
+            is_approved=False,
             created_at=now_utc,
         )
         _fs_save_user(user)
@@ -154,9 +163,9 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
             username=clean_username,
             email=clean_email,
             hashed_password=hashed_pw,
-            role="ADMIN_OPERATOR" if is_admin else "STANDARD_USER",
+            role="STANDARD_USER",
             is_active=True,
-            is_approved=True if is_admin else False,
+            is_approved=False,
         )
         db.add(user)
         await db.flush()
@@ -218,17 +227,8 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Uživatelský účet byl deaktivován.")
 
-    if not user.is_approved and not _is_root_admin_email(user.email):
+    if not user.is_approved:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Váš účet čeká na schválení administrátorem.")
-
-    if _is_root_admin_email(user.email) and (user.role != "ADMIN_OPERATOR" or not user.is_approved):
-        user.role = "ADMIN_OPERATOR"
-        user.is_approved = True
-        if is_mock_session(db):
-            _fs_save_user(user)
-        else:
-            await db.commit()
-            await db.refresh(user)
 
     access_token = create_access_token(data={"sub": user.username, "role": user.role})
     return {"access_token": access_token, "token_type": "bearer", "username": user.username, "role": user.role}

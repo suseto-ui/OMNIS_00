@@ -69,6 +69,8 @@ class AuthenticationManager(
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().apply()
         com.example.security.OmnisSecureStorage.removeKey(context, KEY_TOKEN)
+        com.example.security.OmnisSecureStorage.removeKey(context, KEY_USERNAME)
+        com.example.security.OmnisSecureStorage.removeKey(context, KEY_ROLE)
         com.example.security.OmnisSecureStorage.removeKey(context, KEY_IS_EXTERNAL_SESSION)
     }
 
@@ -78,30 +80,31 @@ class AuthenticationManager(
      * lokální tokeny podléhají plné HMAC verifikaci podpisu.
      */
     fun restoreSession(context: Context): AuthSession? {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val encryptedToken = com.example.security.OmnisSecureStorage.decryptAndRetrieve(context, KEY_TOKEN)
-        val token = encryptedToken ?: if (com.example.BuildConfig.DEBUG || com.example.data.DatabaseConfig.isTesting) {
-            prefs.getString(KEY_TOKEN, null)
-        } else {
-            null
-        } ?: return null
-        val username = prefs.getString(KEY_USERNAME, null) ?: return null
-        val roleStr = prefs.getString(KEY_ROLE, null) ?: return null
+            ?: return null
+        val username = com.example.security.OmnisSecureStorage.decryptAndRetrieve(context, KEY_USERNAME)
+            ?: return null
+        val roleStr = com.example.security.OmnisSecureStorage.decryptAndRetrieve(context, KEY_ROLE)
+            ?: return null
         val isExternalSession = com.example.security.OmnisSecureStorage.decryptAndRetrieve(
             context,
             KEY_IS_EXTERNAL_SESSION
         ) == "true"
 
-        val validation = com.example.auth.jwt.JwtTokenManager.validateToken(token)
+        val validation = com.example.auth.jwt.JwtTokenManager.validateToken(encryptedToken)
         val isValid = when (validation) {
-            is com.example.auth.jwt.JwtTokenManager.JwtValidationResult.Valid -> true
+            is com.example.auth.jwt.JwtTokenManager.JwtValidationResult.Valid -> {
+                validation.claims.subject.equals(username, ignoreCase = true) &&
+                    validation.claims.role.equals(roleStr, ignoreCase = true)
+            }
             is com.example.auth.jwt.JwtTokenManager.JwtValidationResult.InvalidSignature -> {
-                if (isExternalSession && encryptedToken != null) {
-                    val claims = com.example.auth.jwt.JwtTokenManager.parseClaimsUnverified(token)
+                if (isExternalSession) {
+                    val claims = com.example.auth.jwt.JwtTokenManager.parseClaimsUnverified(encryptedToken)
                     claims != null &&
                         claims.expiresAt > 0L &&
                         !claims.isExpired &&
-                        claims.subject.equals(username, ignoreCase = true)
+                        claims.subject.equals(username, ignoreCase = true) &&
+                        claims.role.equals(roleStr, ignoreCase = true)
                 } else {
                     false
                 }
@@ -116,7 +119,7 @@ class AuthenticationManager(
         }
 
         val role = parseRoleSafely(roleStr)
-        return AuthSession(token = token, username = username, role = role)
+        return AuthSession(token = encryptedToken, username = username, role = role)
     }
 
     /**
@@ -171,6 +174,8 @@ class AuthenticationManager(
 
     private fun persistSession(context: Context, session: AuthSession, isExternal: Boolean = false) {
         com.example.security.OmnisSecureStorage.encryptAndStore(context, KEY_TOKEN, session.token)
+        com.example.security.OmnisSecureStorage.encryptAndStore(context, KEY_USERNAME, session.username)
+        com.example.security.OmnisSecureStorage.encryptAndStore(context, KEY_ROLE, session.role.name)
         com.example.security.OmnisSecureStorage.encryptAndStore(
             context,
             KEY_IS_EXTERNAL_SESSION,
@@ -179,8 +184,8 @@ class AuthenticationManager(
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .remove(KEY_TOKEN)
-            .putString(KEY_USERNAME, session.username)
-            .putString(KEY_ROLE, session.role.name)
+            .remove(KEY_USERNAME)
+            .remove(KEY_ROLE)
             .apply()
     }
 

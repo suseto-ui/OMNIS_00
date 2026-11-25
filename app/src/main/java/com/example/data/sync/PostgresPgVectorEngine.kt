@@ -51,13 +51,32 @@ object PostgresPgVectorEngine {
         WITH (m = 16, ef_construction = 64);
     """
 
+    private val SAFE_ID_REGEX = Regex("^[A-Za-z0-9_.\\-:]{1,64}$")
+    private val SAFE_PHASE_REGEX = Regex("^[A-Za-z0-9_\\-]{1,32}$")
+
+    private fun formatSafeVectorLiteral(vector: FloatArray): String {
+        require(vector.isNotEmpty()) { "Vector must not be empty" }
+        return "[" + vector.joinToString(",") { v ->
+            require(v.isFinite()) { "Vector component must be finite" }
+            String.format(java.util.Locale.US, "%.5f", v)
+        } + "]"
+    }
+
+    private fun escapeSqlStringLiteral(value: String): String {
+        return value
+            .replace("\u0000", "")
+            .replace("'", "''")
+    }
+
     /**
      * Generuje SQL INSERT dotaz s formátovaným pgvector polem `[v1,v2,...,v64]`.
      */
     fun generatePgVectorInsertQuery(entity: PgVectorEntity): String {
-        val vectorStr = "[" + entity.vector64.joinToString(",") { String.format(java.util.Locale.US, "%.5f", it) } + "]"
-        val escapedName = entity.entityName.replace("'", "''")
-        val escapedMatrix = entity.impactMatrixJson.replace("'", "''")
+        require(SAFE_ID_REGEX.matches(entity.id)) { "Invalid PgVectorEntity id format" }
+        require(SAFE_PHASE_REGEX.matches(entity.phaseState)) { "Invalid PgVectorEntity phaseState format" }
+        val vectorStr = formatSafeVectorLiteral(entity.vector64)
+        val escapedName = escapeSqlStringLiteral(entity.entityName)
+        val escapedMatrix = escapeSqlStringLiteral(entity.impactMatrixJson)
         return "INSERT INTO omnis_memory_embeddings (id, entity_name, embedding, impact_matrix_json, phase_state) VALUES ('${entity.id}', '$escapedName', '$vectorStr'::vector, '$escapedMatrix', '${entity.phaseState}') ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, impact_matrix_json = EXCLUDED.impact_matrix_json;"
     }
 
@@ -65,8 +84,9 @@ object PostgresPgVectorEngine {
      * Generuje pgvector HNSW kosinový vyhladávací SQL dotaz.
      */
     fun generateHnswSearchQuery(queryVector: FloatArray, topK: Int = 3): String {
-        val vectorStr = "[" + queryVector.joinToString(",") { String.format(java.util.Locale.US, "%.5f", it) } + "]"
-        return "SELECT id, entity_name, impact_matrix_json, phase_state, (1 - (embedding <=> '$vectorStr'::vector)) AS cosine_similarity FROM omnis_memory_embeddings ORDER BY embedding <=> '$vectorStr'::vector LIMIT $topK;"
+        val safeTopK = topK.coerceIn(1, 500)
+        val vectorStr = formatSafeVectorLiteral(queryVector)
+        return "SELECT id, entity_name, impact_matrix_json, phase_state, (1 - (embedding <=> '$vectorStr'::vector)) AS cosine_similarity FROM omnis_memory_embeddings ORDER BY embedding <=> '$vectorStr'::vector LIMIT $safeTopK;"
     }
 
     /**

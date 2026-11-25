@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
         speechController.initialize()
         com.example.ui.chat.ChatDisplayPreferences.init(this)
         com.example.api.OmnisGeminiClient.init(this)
+        com.example.data.SyncLogManager.init(this)
         com.example.data.OmnisBatchSyncScheduler.scheduleNetworkRecoverySync(this)
 
         setContent {

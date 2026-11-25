@@ -28,6 +28,9 @@ interface OmnisDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecords(records: List<OmnisRecord>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecordsReturningIds(records: List<OmnisRecord>): List<Long>
+
     @Query("DELETE FROM omnis_messages WHERE threadId = :threadId")
     suspend fun deleteThread(threadId: String)
 
@@ -66,6 +69,9 @@ interface OmnisDao {
 
     @Query("UPDATE omnis_messages SET isSyncedToPostgres = 1")
     suspend fun markAllAsSynced()
+
+    @Query("DELETE FROM omnis_messages WHERE isSyncedToPostgres = 1 AND timestamp < :cutoffTimestamp")
+    suspend fun pruneOldSyncedRecords(cutoffTimestamp: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGoal(goal: OmnisGoal): Long

@@ -36,12 +36,26 @@ class JwtAuthInterceptor(
             "/api/admin",
             "/v1beta/models",
             "/api/stabilize",
-            "/api/synthesize"
+            "/api/synthesize",
+            "/api/threads",
+            "/api/memory",
+            "/api/query",
+            "/api/epistemic",
+            "/api/audit",
+            "/api/akge",
+            "/api/v1/sync",
+            "/api/v1/inference",
+            "/api/user",
+            "/api/dev"
         )
 
         val ADMIN_ONLY_PATHS = listOf(
             "/api/admin",
-            "/api/system/override"
+            "/api/system/override",
+            "/api/system/db-check",
+            "/api/system/gemini-check",
+            "/api/epistemic/export",
+            "/api/dev/reset-tokens"
         )
     }
 
@@ -136,7 +150,10 @@ class JwtAuthInterceptor(
         statusCode: Int,
         message: String
     ): Response {
-        val json = "{\"error\": \"$message\", \"status\": $statusCode}"
+        val json = org.json.JSONObject().apply {
+            put("error", message)
+            put("status", statusCode)
+        }.toString()
         return Response.Builder()
             .request(chain.request())
             .protocol(Protocol.HTTP_1_1)

@@ -187,7 +187,7 @@ fun AdminTopAppBar(
                     )
                 }
 
-                // Indikátor stavu Cloud SQL synchronizace
+                // Indikátor stavu PostgreSQL 17 synchronizace
                 val isSpinning = syncStatus is com.example.data.CloudSqlSyncManager.SyncStatus.Syncing ||
                         syncStatus is com.example.data.CloudSqlSyncManager.SyncStatus.Connecting
                 val syncRotation by rememberInfiniteTransition(label = "adm_sync_rot").animateFloat(
@@ -215,7 +215,7 @@ fun AdminTopAppBar(
                 ) {
                     Icon(
                         imageVector = syncIcon,
-                        contentDescription = "Cloud SQL Synchronizace",
+                        contentDescription = "PostgreSQL 17 Synchronizace",
                         tint = syncTint,
                         modifier = Modifier
                             .size(17.dp)

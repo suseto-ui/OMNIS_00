@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Applies PostgreSQL role passwords exclusively from environment variables (.env / Secret Manager)
+# Applies PostgreSQL role passwords exclusively from environment variables (.env)
 psql_exec() {
   psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER:-postgres}" --dbname "${POSTGRES_DB:-omnis_db}" "$@"
 }

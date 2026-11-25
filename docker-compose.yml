@@ -29,7 +29,7 @@ services:
       POSTGRES_AUDIT_PASSWORD: ${POSTGRES_AUDIT_PASSWORD:-}
       POSTGRES_SYNC_PASSWORD: ${POSTGRES_SYNC_PASSWORD:-}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pg17_data:/var/lib/postgresql/data
       - ./backend/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -54,11 +54,11 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_SYNC_USER:-postgres}:${POSTGRES_SYNC_PASSWORD:-${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}}@db:5432/${POSTGRES_DB:-omnis_db}?sslmode=disable
-      ELECTRIC_INSECURE: ${ELECTRIC_INSECURE:-true}
+      DATABASE_URL: postgresql://${POSTGRES_SYNC_USER:-omnis_sync_repl}:${POSTGRES_SYNC_PASSWORD:?POSTGRES_SYNC_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-omnis_db}?sslmode=disable
+      ELECTRIC_INSECURE: ${ELECTRIC_INSECURE:-false}
       ELECTRIC_PORT: 3000
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - electric_data:/var/lib/electric/data
     healthcheck:
@@ -86,8 +86,8 @@ services:
         condition: service_healthy
     environment:
       ENV: ${ENV:-production}
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_APP_USER:-postgres}:${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}}@db:5432/${POSTGRES_DB:-omnis_db}
-      AUDIT_DATABASE_URL: postgresql+asyncpg://${POSTGRES_AUDIT_USER:-postgres}:${POSTGRES_AUDIT_PASSWORD:-${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}}@db:5432/${POSTGRES_DB:-omnis_db}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_APP_USER:-omnis_app_rw}:${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-omnis_db}
+      AUDIT_DATABASE_URL: postgresql+asyncpg://${POSTGRES_AUDIT_USER:-omnis_audit_append}:${POSTGRES_AUDIT_PASSWORD:?POSTGRES_AUDIT_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-omnis_db}
       ELECTRIC_URL: ${ELECTRIC_URL:-http://electric:3000}
       USE_OSS_POSTGRES_SYNC: ${USE_OSS_POSTGRES_SYNC:-true}
       LLM_PROVIDER_MODE: ${LLM_PROVIDER_MODE:-gemma4_local}
@@ -101,7 +101,7 @@ services:
       OMNIS_SYNC_API_KEY: ${OMNIS_SYNC_API_KEY:?OMNIS_SYNC_API_KEY must be set in .env}
       PORT: 8000
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD-SHELL", "(curl -sf http://127.0.0.1:8000/healthz || python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)\") >/dev/null 2>&1"]
       interval: 10s

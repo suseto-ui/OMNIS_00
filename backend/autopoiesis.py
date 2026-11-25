@@ -2,15 +2,19 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.auth_router import get_current_user
 from backend.database import get_db
-from backend.models import Message, ImpactMatrixMetric
+from backend.models import Conversation, Message, ImpactMatrixMetric, User
 from backend.schemas import AutopoieticFeedbackRequest, AutopoieticFeedbackResponse
 from backend.memory import background_record_vector_memory
 
 autopoiesis_router = APIRouter(prefix="/api", tags=["Autopoiesis"])
 
 @autopoiesis_router.get("/autopoiesis/status")
-async def get_autopoietic_status(db: AsyncSession = Depends(get_db)):
+async def get_autopoietic_status(
+    _current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Vrací globální stav a telemetrii autopoietické adaptivní smyčky."""
     adaptation_stats = {
         "status": "active",
@@ -28,12 +32,17 @@ async def get_autopoietic_status(db: AsyncSession = Depends(get_db)):
 async def submit_feedback(
     payload: AutopoieticFeedbackRequest,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AutopoieticFeedbackResponse:
     adaptation_delta = (payload.user_rating - 3) * 0.05
 
     try:
         message = await db.get(Message, payload.message_id)
+        if message:
+            conv = await db.get(Conversation, message.conversation_id)
+            if conv and conv.user_id != str(current_user.id) and current_user.role != "ADMIN_OPERATOR":
+                raise HTTPException(status_code=403, detail="Přístup ke zprávě odepřen.")
         if message and payload.adjusted_matrix:
             stmt = select(ImpactMatrixMetric).where(ImpactMatrixMetric.message_id == message.id)
             result = await db.execute(stmt)

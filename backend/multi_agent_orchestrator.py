@@ -8,8 +8,10 @@ from __future__ import annotations
 import json
 import logging
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from backend.auth_router import get_current_user
+from backend.models import User
 from backend.schemas import (
     MultiAgentDeliberationRequest,
     MultiAgentDeliberationResponse,
@@ -48,7 +50,7 @@ AVAILABLE_AGENTS = [
 ]
 
 @multi_agent_router.get("/agents")
-async def list_available_agents():
+async def list_available_agents(_current_user: User = Depends(get_current_user)):
     """Vrací seznam aktivních specializovaných agentů O.M.N.I.S."""
     return {"agents": AVAILABLE_AGENTS, "total_count": len(AVAILABLE_AGENTS)}
 
@@ -101,7 +103,10 @@ def _calculate_consensus(perspectives: List[AgentPerspective]) -> tuple[float, s
     return consensus_score, status, unique_penalties
 
 @multi_agent_router.post("/deliberate", response_model=MultiAgentDeliberationResponse)
-async def conduct_multi_agent_deliberation(request: MultiAgentDeliberationRequest):
+async def conduct_multi_agent_deliberation(
+    request: MultiAgentDeliberationRequest,
+    _current_user: User = Depends(get_current_user),
+):
     """
     Runs multi-agent adversarial deliberation on user query and candidate solution.
     Gathers perspectives from Architect, Skeptic, Regulator, and Engineer.

@@ -1,10 +1,15 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from backend.auth_router import get_current_user
+from backend.models import User
 from backend.schemas import ConvergenceEvaluationRequest, ConvergenceEvaluationResponse
 
 phase4_router = APIRouter(prefix="/omnis/phase-4", tags=["OMNIS Phase IV - Convergence"])
 
 @phase4_router.post("/evaluate-matrix", response_model=ConvergenceEvaluationResponse)
-async def evaluate_impact_matrix(payload: ConvergenceEvaluationRequest):
+async def evaluate_impact_matrix(
+    payload: ConvergenceEvaluationRequest,
+    _current_user: User = Depends(get_current_user),
+):
     """
     Fáze IV (Synergická Konvergence) dle blueprintu (str. 10-11):
     Deterministický výstupní validátor (Guardrail).

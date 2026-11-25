@@ -174,16 +174,16 @@ object GeminiDiagnosticService {
 
         val startTime = System.currentTimeMillis()
         try {
-            val url = "$PROBE_URL?key=$apiKey"
             val request = Request.Builder()
-                .url(url)
+                .url(PROBE_URL)
+                .header("x-goog-api-key", apiKey)
                 .get()
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
                 val latency = System.currentTimeMillis() - startTime
                 val code = response.code
-                val bodyStr = response.body?.string().orEmpty()
+                val bodyStr = sanitizeDiagnosticText(response.body?.string().orEmpty(), apiKey)
 
                 val report = parseProbeResponse(code, bodyStr, masked, apiKey.length, latency).copy(
                     totalActiveKeysInPool = allEntries.size
@@ -206,7 +206,13 @@ object GeminiDiagnosticService {
             }
         } catch (e: IOException) {
             val latency = System.currentTimeMillis() - startTime
-            Log.e(TAG, "Diagnostic network failure", e)
+            if (BuildConfig.DEBUG) {
+                Log.e(TAG, "Diagnostic network failure", e)
+            } else {
+                Log.e(TAG, "Diagnostic network failure: ${e.javaClass.simpleName}")
+            }
+            val safeMsg = sanitizeDiagnosticText(e.message, apiKey)
+            val safeLocalized = sanitizeDiagnosticText(e.localizedMessage, apiKey)
             val report = GeminiDiagnosticReport(
                 isConfigured = true,
                 isPlaceholder = false,
@@ -216,11 +222,11 @@ object GeminiDiagnosticService {
                 httpCode = null,
                 latencyMs = latency,
                 statusTitle = "CHYBA PŘIPOJENÍ K SÍTI",
-                statusDescription = "Mobilní zařízení se nemohlo spojit se servery Google (${e.message ?: "Timeout"}).",
+                statusDescription = "Mobilní zařízení se nemohlo spojit se servery Google (${safeMsg.ifBlank { "Timeout" }}).",
                 quotaState = "Neznámý (Zařízení je offline)",
                 discoveredModels = emptyList(),
                 recommendation = "Zkontrolujte Wi-Fi nebo mobilní data na zařízení. Aplikace bezpečně pokračuje v lokálním 8D režimu.",
-                rawResponseSnippet = e.localizedMessage,
+                rawResponseSnippet = safeLocalized,
                 totalActiveKeysInPool = allEntries.size
             )
             _latestReport.value = report
@@ -232,15 +238,21 @@ object GeminiDiagnosticService {
                     latencyMs = latency,
                     status = GeminiKeyStatus.NETWORK_ERROR,
                     statusBadge = "OFFLINE",
-                    details = "Chyba sítě: ${e.message ?: "Timeout"}",
-                    payloadSnippet = e.localizedMessage
+                    details = "Chyba sítě: ${safeMsg.ifBlank { "Timeout" }}",
+                    payloadSnippet = safeLocalized
                 )
             )
 
             report
         } catch (e: Exception) {
             val latency = System.currentTimeMillis() - startTime
-            Log.e(TAG, "Unexpected diagnostic error", e)
+            if (BuildConfig.DEBUG) {
+                Log.e(TAG, "Unexpected diagnostic error", e)
+            } else {
+                Log.e(TAG, "Unexpected diagnostic error: ${e.javaClass.simpleName}")
+            }
+            val safeMsg = sanitizeDiagnosticText(e.message, apiKey)
+            val safeSummary = sanitizeDiagnosticText(e.javaClass.simpleName, apiKey)
             val report = GeminiDiagnosticReport(
                 isConfigured = true,
                 isPlaceholder = false,
@@ -250,11 +262,11 @@ object GeminiDiagnosticService {
                 httpCode = null,
                 latencyMs = latency,
                 statusTitle = "NEOČEKÁVANÁ CHYBA DIAGNOSTIKY",
-                statusDescription = e.message ?: "Neznámá výjimka",
+                statusDescription = safeMsg.ifBlank { "Neznámá výjimka" },
                 quotaState = "Chyba",
                 discoveredModels = emptyList(),
                 recommendation = "Restartujte diagnostický modul nebo zkontrolujte systémové logy.",
-                rawResponseSnippet = e.toString(),
+                rawResponseSnippet = safeSummary,
                 totalActiveKeysInPool = allEntries.size
             )
             _latestReport.value = report
@@ -266,8 +278,8 @@ object GeminiDiagnosticService {
                     latencyMs = latency,
                     status = GeminiKeyStatus.NETWORK_ERROR,
                     statusBadge = "ERROR",
-                    details = e.message ?: "Neznámá chyba",
-                    payloadSnippet = e.toString()
+                    details = safeMsg.ifBlank { "Neznámá chyba" },
+                    payloadSnippet = safeSummary
                 )
             )
 
@@ -295,9 +307,10 @@ object GeminiDiagnosticService {
             return@withContext entry
         }
 
+        val safeModel = model.trim().takeIf { it.matches(Regex("^[a-zA-Z0-9._-]+$")) } ?: "gemini-3.5-flash"
         val startTime = System.currentTimeMillis()
         try {
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/$safeModel:generateContent"
             val jsonPayload = JSONObject().apply {
                 put("contents", JSONArray().apply {
                     put(JSONObject().apply {
@@ -315,13 +328,14 @@ object GeminiDiagnosticService {
             val body = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             val request = Request.Builder()
                 .url(url)
+                .header("x-goog-api-key", apiKey)
                 .post(body)
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
                 val latency = System.currentTimeMillis() - startTime
                 val code = response.code
-                val bodyStr = response.body?.string().orEmpty()
+                val bodyStr = sanitizeDiagnosticText(response.body?.string().orEmpty(), apiKey)
 
                 val status = when (code) {
                     200 -> GeminiKeyStatus.VALID_ACTIVE
@@ -333,13 +347,13 @@ object GeminiDiagnosticService {
 
                 val snippet = extractErrorMessage(bodyStr)
                 val entry = GeminiPingLogEntry(
-                    targetEndpoint = "POST /v1beta/models/$model:generateContent",
+                    targetEndpoint = "POST /v1beta/models/$safeModel:generateContent",
                     httpCode = code,
                     latencyMs = latency,
                     status = status,
                     statusBadge = if (code == 200) "200 OK (${latency}ms)" else "HTTP $code (${latency}ms)",
                     details = when (code) {
-                        200 -> "Úspěšný ping na $model. Klíčový fond aktivní (${allEntries.size} klíčů)."
+                        200 -> "Úspěšný ping na $safeModel. Klíčový fond aktivní (${allEntries.size} klíčů)."
                         402 -> "HTTP 402 - Vyčerpán předplacený kredit (Prepayment credits depleted)."
                         429 -> "HTTP 429 - Překročen limit požadavků (Rate Limit)."
                         else -> "Server vrátil HTTP $code: $snippet"
@@ -351,14 +365,16 @@ object GeminiDiagnosticService {
             }
         } catch (e: Exception) {
             val latency = System.currentTimeMillis() - startTime
+            val safeMsg = sanitizeDiagnosticText(e.message, apiKey)
+            val safeLocalized = sanitizeDiagnosticText(e.localizedMessage, apiKey)
             val entry = GeminiPingLogEntry(
-                targetEndpoint = "POST /v1beta/models/$model:generateContent",
+                targetEndpoint = "POST /v1beta/models/$safeModel:generateContent",
                 httpCode = null,
                 latencyMs = latency,
                 status = GeminiKeyStatus.NETWORK_ERROR,
                 statusBadge = "TIMEOUT",
-                details = "Chyba spojení s modelem $model: ${e.message}",
-                payloadSnippet = e.localizedMessage
+                details = "Chyba spojení s modelem $safeModel: ${safeMsg.ifBlank { e.javaClass.simpleName }}",
+                payloadSnippet = safeLocalized
             )
             addLog(entry)
             entry
@@ -586,13 +602,22 @@ object GeminiDiagnosticService {
         return validateSingleKeyFormat(1, "GEMINI_API_KEY (Slot 1)", rawKey)
     }
 
+    private fun sanitizeDiagnosticText(raw: String?, apiKey: String): String {
+        if (raw.isNullOrBlank()) return ""
+        var cleaned = raw
+        if (apiKey.isNotBlank()) {
+            cleaned = cleaned.replace(apiKey, "[REDACTED]")
+        }
+        return cleaned.replace(Regex("AIza[0-9A-Za-z_-]{20,}"), "[REDACTED]")
+    }
+
     private fun extractErrorMessage(jsonBody: String): String {
         return try {
             val root = JSONObject(jsonBody)
             val errObj = root.optJSONObject("error")
-            errObj?.optString("message") ?: jsonBody.take(200)
+            sanitizeDiagnosticText(errObj?.optString("message") ?: jsonBody.take(200), "")
         } catch (e: Exception) {
-            jsonBody.take(200)
+            sanitizeDiagnosticText(jsonBody.take(200), "")
         }
     }
 }

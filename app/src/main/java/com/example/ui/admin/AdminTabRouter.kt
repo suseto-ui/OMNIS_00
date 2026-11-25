@@ -50,7 +50,9 @@ fun AdminTabRouter(
     Crossfade(targetState = activeTab, modifier = modifier.fillMaxSize(), label = "admin_tab_transition") { currentTab ->
         when (currentTab) {
             OmnisTab.SYNC_LOGS -> {
-                com.example.ui.components.SyncLogScreen()
+                com.example.ui.components.SyncLogScreen(
+                    onBack = { viewModel.setTab(OmnisTab.DASHBOARD) }
+                )
             }
             OmnisTab.MULTI_AGENT_DEBATE -> {
                 com.example.ui.debate.MultiAgentDebateView(viewModel = viewModel)

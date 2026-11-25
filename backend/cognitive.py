@@ -9,10 +9,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database import get_db
+from backend.auth_router import get_current_user
+from backend.database import get_db, set_pg_rls_context
 from backend.gateway import GatekeeperChainException, GatekeeperG1G6
 from backend.gemini_service import cognitive_service
-from backend.models import Conversation, Message, ImpactMatrixMetric, VectorMemory
+from backend.models import Conversation, Message, ImpactMatrixMetric, VectorMemory, User
 from backend.schemas import (
     QueryRequest,
     QueryResponse,
@@ -29,12 +30,26 @@ from sqlalchemy import text
 logger = logging.getLogger("omnis.api")
 cognitive_router = APIRouter(prefix="/api", tags=["Cognitive Query"])
 
+_ALLOWED_IMAGE_MIMES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+_MAX_IMAGE_DATA_CHARS = 10_000_000
+
+
+def _validate_image_attachment(image_data: Optional[str], image_mime: Optional[str]) -> None:
+    if not image_data:
+        return
+    if len(image_data) > _MAX_IMAGE_DATA_CHARS:
+        raise HTTPException(status_code=413, detail="Přiložený obrázek překračuje maximální povolenou velikost.")
+    mime = (image_mime or "").strip().lower()
+    if mime not in _ALLOWED_IMAGE_MIMES:
+        raise HTTPException(status_code=400, detail="Nepodporovaný MIME typ přílohy.")
+
 async def hybrid_retrieve_memories(
     db: AsyncSession,
     query_text: str,
     query_vec: List[float],
     top_k: int = 3,
-    rrf_k: int = 60
+    rrf_k: int = 60,
+    user_id: Optional[str] = None,
 ) -> List[str]:
     """
     Hybrid Epistemic Retrieval combining Dense Semantic Search (HNSW pgvector)
@@ -44,8 +59,13 @@ async def hybrid_retrieve_memories(
     
     # 1. Dense Semantic Search (pgvector)
     try:
+        dense_stmt = select(VectorMemory.content)
+        if user_id:
+            dense_stmt = dense_stmt.join(
+                Conversation, VectorMemory.conversation_id == Conversation.id
+            ).filter(Conversation.user_id == user_id)
         dense_stmt = (
-            select(VectorMemory.content)
+            dense_stmt
             .filter(VectorMemory.memory_type != "semantic_cache")
             .order_by(VectorMemory.embedding.cosine_distance(query_vec))
             .limit(5)
@@ -59,8 +79,13 @@ async def hybrid_retrieve_memories(
 
     # 2. Sparse Keyword Search (tsvector full-text)
     try:
+        sparse_stmt = select(VectorMemory.content)
+        if user_id:
+            sparse_stmt = sparse_stmt.join(
+                Conversation, VectorMemory.conversation_id == Conversation.id
+            ).filter(Conversation.user_id == user_id)
         sparse_stmt = (
-            select(VectorMemory.content)
+            sparse_stmt
             .filter(VectorMemory.memory_type != "semantic_cache")
             .filter(text("to_tsvector('simple', content) @@ plainto_tsquery('simple', :q)"))
             .params(q=query_text)
@@ -99,19 +124,26 @@ def calculate_cognitive_node_metrics(text: str) -> CognitiveNodeMetricsSchema:
 async def process_user_query(
     request: QueryRequest,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> QueryResponse:
+    _validate_image_attachment(request.image_data, request.image_mime)
+    await set_pg_rls_context(db, str(current_user.id), current_user.role)
+
     conv_id = request.conversation_id
     conversation: Optional[Conversation] = None
 
     if conv_id:
         conversation = await db.get(Conversation, conv_id)
+        if conversation and conversation.user_id != current_user.id and current_user.role != "ADMIN_OPERATOR":
+            raise HTTPException(status_code=403, detail="Přístup ke konverzaci odepřen.")
 
     if not conversation:
         title_snippet = request.query[:45].strip()
         conv_id = str(conv_id) if conv_id else str(uuid.uuid4())
         conversation = Conversation(
             id=conv_id,
+            user_id=str(current_user.id),
             title=f"Analýza: {title_snippet}...",
             ontology_domain=request.ontology_domain,
             created_at=datetime.now(timezone.utc),
@@ -125,12 +157,18 @@ async def process_user_query(
         db.add(conversation)
         await db.commit()
 
+    scoped_user_id = None if current_user.role == "ADMIN_OPERATOR" else str(current_user.id)
     context_memories: List[str] = []
     try:
         query_vec = await cognitive_service.generate_embedding(request.query)
 
+        cache_stmt = select(VectorMemory)
+        if scoped_user_id:
+            cache_stmt = cache_stmt.join(
+                Conversation, VectorMemory.conversation_id == Conversation.id
+            ).filter(Conversation.user_id == scoped_user_id)
         cache_stmt = (
-            select(VectorMemory)
+            cache_stmt
             .filter(VectorMemory.memory_type == "semantic_cache")
             .filter(VectorMemory.embedding.cosine_distance(query_vec) < 0.02)
             .order_by(VectorMemory.embedding.cosine_distance(query_vec))
@@ -194,7 +232,8 @@ async def process_user_query(
             db=db,
             query_text=request.query,
             query_vec=query_vec,
-            top_k=3
+            top_k=3,
+            user_id=scoped_user_id,
         )
     except Exception as exc:
         logger.debug(f"pgvector hybrid query note (normal during first run without data): {exc}")
@@ -294,7 +333,10 @@ async def process_user_query(
 
 
 @cognitive_router.post("/adversarial-review", response_model=AdversarialReviewResponse)
-async def perform_adversarial_review(request: AdversarialReviewRequest) -> AdversarialReviewResponse:
+async def perform_adversarial_review(
+    request: AdversarialReviewRequest,
+    _current_user: User = Depends(get_current_user),
+) -> AdversarialReviewResponse:
     """
     Triggers an independent adversarial critique pass by a secondary model
     tasked with acting as a 'Skeptical Opponent' to evaluate primary reasoning.
@@ -317,23 +359,30 @@ async def perform_adversarial_review(request: AdversarialReviewRequest) -> Adver
 async def process_user_query_stream(
     request: QueryRequest,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Streams the 5-phase cognitive synthesis in real-time via Server-Sent Events (SSE).
     Emits events: init, phase_start, token_chunk, matrix_update, consequence_forensics, complete.
     """
+    _validate_image_attachment(request.image_data, request.image_mime)
+    await set_pg_rls_context(db, str(current_user.id), current_user.role)
+
     conv_id = request.conversation_id
     conversation: Optional[Conversation] = None
 
     if conv_id:
         conversation = await db.get(Conversation, conv_id)
+        if conversation and conversation.user_id != current_user.id and current_user.role != "ADMIN_OPERATOR":
+            raise HTTPException(status_code=403, detail="Přístup ke konverzaci odepřen.")
 
     if not conversation:
         title_snippet = request.query[:45].strip()
         conv_id = str(conv_id) if conv_id else str(uuid.uuid4())
         conversation = Conversation(
             id=conv_id,
+            user_id=str(current_user.id),
             title=f"Analýza: {title_snippet}...",
             ontology_domain=request.ontology_domain,
             created_at=datetime.now(timezone.utc),
@@ -347,6 +396,8 @@ async def process_user_query_stream(
         db.add(conversation)
         await db.commit()
 
+    scoped_user_id = None if current_user.role == "ADMIN_OPERATOR" else str(current_user.id)
+
     async def event_generator():
         yield f"event: init\ndata: {json.dumps({'conversation_id': str(conv_id), 'status': 'connected'})}\n\n"
         await asyncio.sleep(0.01)
@@ -355,8 +406,13 @@ async def process_user_query_stream(
         context_memories: List[str] = []
         try:
             query_vec = await cognitive_service.generate_embedding(request.query)
+            cache_stmt = select(VectorMemory)
+            if scoped_user_id:
+                cache_stmt = cache_stmt.join(
+                    Conversation, VectorMemory.conversation_id == Conversation.id
+                ).filter(Conversation.user_id == scoped_user_id)
             cache_stmt = (
-                select(VectorMemory)
+                cache_stmt
                 .filter(VectorMemory.memory_type == "semantic_cache")
                 .filter(VectorMemory.embedding.cosine_distance(query_vec) < 0.02)
                 .order_by(VectorMemory.embedding.cosine_distance(query_vec))
@@ -402,7 +458,8 @@ async def process_user_query_stream(
                 db=db,
                 query_text=request.query,
                 query_vec=query_vec,
-                top_k=3
+                top_k=3,
+                user_id=scoped_user_id,
             )
         except Exception as exc:
             logger.debug(f"Streaming hybrid cache lookup note: {exc}")

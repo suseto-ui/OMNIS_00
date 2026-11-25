@@ -5,6 +5,8 @@ import random
 import logging
 from typing import List, Optional
 
+from backend.security.auth_utils import decode_access_token
+
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard Metrics"])
 logger = logging.getLogger("omnis.dashboard")
 
@@ -50,8 +52,21 @@ async def metric_generator():
         await asyncio.sleep(2)
 
 
+def _extract_ws_token(websocket: WebSocket) -> str:
+    auth_header = (websocket.headers.get("authorization") or "").strip()
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()
+    return (websocket.query_params.get("token") or "").strip()
+
+
 @router.websocket("/ws/metrics")
 async def websocket_endpoint(websocket: WebSocket):
+    token = _extract_ws_token(websocket)
+    payload = decode_access_token(token) if token else None
+    if not payload or not payload.get("sub"):
+        await websocket.close(code=1008)
+        return
+
     await manager.connect(websocket)
     try:
         while True:

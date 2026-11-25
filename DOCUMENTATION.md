@@ -85,7 +85,7 @@ flowchart TD
 
 ### 2.2 Inferenční Kaskáda, Circuit Breaker & Release Provenance
 - **Android klient:** `FirebaseAiService` (`gemini-3.8-flash` / `gemini-3.5-flash-lite`) a lokální `HybridInferenceOrchestrator` (>= 4 GB RAM práh, 1500 ms timeout, bez dynamického načítání `.so`/`.dex`/`.jar`). `OmnisCircuitBreaker` při HTTP 429 respektuje hlavičku `Retry-After` v bezpečném intervalu **5–300 s** a propaguje degraded stav do UI přes `ChatStatusBanner`.
-- **Backend server:** `backend/app/llm_cascade.py` (Tier 1 lokální Gemma 4 dle `tools/gemma4/agent.yaml` -> Groq -> Gemini -> OpenRouter s `ProviderCircuitBreaker` `CLOSED`/`OPEN`/`HALF-OPEN` a HTTP 429 `Retry-After` `[5, 300]` s), vystaveno přes `/api/v1/inference/cascade` a `/api/v1/inference/cascade/status`, s volitelným ECDSA P-256 podepisováním při `ENABLE_CLOUD_KMS=true` (výchozí je deterministický `HMAC-SHA256-HASH-CHAIN`).
+- **Backend server:** `backend/app/llm_cascade.py` (Tier 1 lokální Gemma 4 dle `tools/gemma4/agent.yaml` -> Groq -> Gemini -> OpenRouter s `ProviderCircuitBreaker` `CLOSED`/`OPEN`/`HALF-OPEN` a HTTP 429 `Retry-After` `[5, 300]` s), vystaveno přes `/api/v1/inference/cascade` a `/api/v1/inference/cascade/status`, s deterministickým `HMAC-SHA256-HASH-CHAIN` podepisováním.
 - **Release `v4.5.0-GA` Pipeline:** `./scripts/release_v4_5_0.sh` i `.github/workflows/production-ci-cd.yml` ověří všechny brány, spustí Android & Python testy, sestaví R8/ProGuard APK/AAB (`versionCode = 450`, `versionName = "4.5.0"`) a vygenerují `SIGNING_STATUS.txt` (`SIGNED` při přítomnosti keystore, jinak `UNSIGNED_R8_ONLY`) společně s `SHA256SUMS.txt`.
 
 ---

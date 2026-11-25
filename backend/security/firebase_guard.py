@@ -132,9 +132,10 @@ async def verify_firebase_and_appcheck(
                 decoded = fb_auth.verify_id_token(token)
                 claim_role = str(decoded.get("role") or "").strip().upper()
                 email_val = (decoded.get("email") or "").strip().lower()
+                email_verified = bool(decoded.get("email_verified", False))
                 resolved_role = (
                     "ADMIN_OPERATOR"
-                    if (claim_role == "ADMIN_OPERATOR" or email_val == "susetofu@gmail.com")
+                    if (claim_role == "ADMIN_OPERATOR" or (email_verified and email_val == "susetofu@gmail.com"))
                     else "STANDARD_USER"
                 )
                 return AuthenticatedCaller(

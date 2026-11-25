@@ -238,6 +238,10 @@ fun OmnisCockpitView(
             onTriggerSync = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 com.example.data.OmnisBatchSyncScheduler.scheduleNetworkRecoverySync(context)
+            },
+            onOpenLogs = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onTabSwitch(OmnisTab.SYNC_LOGS)
             }
         )
         val refusalVerdict = lastRefusalVerdict

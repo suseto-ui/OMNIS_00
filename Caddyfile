@@ -1,9 +1,6 @@
 {$DOMAIN_NAME:omnis.duckdns.org} {
     reverse_proxy /api/* backend:8000
     reverse_proxy /sync/* backend:8000
-    reverse_proxy /docs backend:8000
-    reverse_proxy /openapi.json backend:8000
-    reverse_proxy /v1/* electric:3000
     reverse_proxy /health backend:8000
     reverse_proxy /healthz backend:8000
     reverse_proxy /download/* backend:8000
@@ -12,6 +9,8 @@
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
         X-XSS-Protection "1; mode=block"
+        Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+        Referrer-Policy "strict-origin-when-cross-origin"
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
     }
 }

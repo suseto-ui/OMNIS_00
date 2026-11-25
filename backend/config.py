@@ -17,12 +17,25 @@ except ImportError:  # pragma: no cover - fallback pro čistou stdlib/Starlette 
         return kwargs
 
 
-_PLACEHOLDER_PREFIXES = ("your-secure-", "replace-with-", "changeme", "dummy")
+_PLACEHOLDER_PREFIXES = (
+    "your-secure-",
+    "replace-with-",
+    "changeme",
+    "dummy",
+    "super-secret-",
+    "omnis-sync-gateway-shared-secret",
+    "securepostgresmasterpassword",
+    "secureapprwpassword",
+    "secureauditpassword",
+    "securesyncreplpassword",
+)
 
 
-def _is_missing_or_placeholder(value: str) -> bool:
+def _is_missing_or_placeholder(value: str, min_length: int = 0) -> bool:
     cleaned = (value or "").strip()
     if not cleaned:
+        return True
+    if min_length > 0 and len(cleaned) < min_length:
         return True
     lowered = cleaned.lower()
     return any(lowered.startswith(prefix) for prefix in _PLACEHOLDER_PREFIXES)
@@ -62,11 +75,11 @@ class OmnisSettings(BaseSettings):
         if not self.is_production:
             return
         missing: List[str] = []
-        if _is_missing_or_placeholder(self.SECRET_KEY):
+        if _is_missing_or_placeholder(self.SECRET_KEY, min_length=24):
             missing.append("SECRET_KEY")
-        if _is_missing_or_placeholder(self.AUDIT_HMAC_KEY):
+        if _is_missing_or_placeholder(self.AUDIT_HMAC_KEY, min_length=24):
             missing.append("AUDIT_HMAC_KEY")
-        if _is_missing_or_placeholder(self.OMNIS_SYNC_API_KEY):
+        if _is_missing_or_placeholder(self.OMNIS_SYNC_API_KEY, min_length=24):
             missing.append("OMNIS_SYNC_API_KEY")
         if _is_missing_or_placeholder(self.DATABASE_URL):
             missing.append("DATABASE_URL")

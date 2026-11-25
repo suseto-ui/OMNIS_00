@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import urllib.request
 import urllib.error
@@ -6,8 +7,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from backend.admin_router import get_current_admin
 from backend.database import get_db
+from backend.models import User
 
+logger = logging.getLogger("omnis.system")
 system_router = APIRouter(tags=["System"])
 
 @system_router.get("/healthz")
@@ -23,7 +27,10 @@ async def health_check() -> dict[str, str]:
     }
 
 @system_router.get("/api/system/db-check")
-async def db_check(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
+async def db_check(
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
     """Checks the live connectivity status of the PostgreSQL 17 instance."""
     try:
         from backend.database import engine
@@ -33,10 +40,11 @@ async def db_check(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
         await db.execute(text("SELECT 1"))
         return {"status": "online"}
     except Exception as e:
-        return {"status": "offline", "reason": str(e)}
+        logger.warning("Database connectivity check failed: %s", e)
+        return {"status": "offline", "reason": "Database connectivity check failed"}
 
 @system_router.get("/api/system/gemini-check")
-async def gemini_check() -> dict:
+async def gemini_check(_admin: User = Depends(get_current_admin)) -> dict:
     """
     Live diagnostics endpoint for verifying GEMINI_API_KEY validity,
     multi-key failover pool status, quota exhaustion (402/429), and model access.
@@ -68,9 +76,16 @@ async def gemini_check() -> dict:
 
     for model_name in test_models:
         last_model_tested = model_name
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         payload = json.dumps({"contents": [{"parts": [{"text": "ping"}]}]}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key,
+            },
+        )
 
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -163,13 +178,15 @@ async def gemini_check() -> dict:
                 "key_pool": pool_status
             }
 
+    if last_err:
+        logger.warning("Gemini diagnostics network failure on %s: %s", last_model_tested, last_err)
     return {
         "configured": True,
         "pool_size": len(pool_status),
         "active_key": active_name,
         "key_preview": masked,
         "status": "NETWORK_TIMEOUT",
-        "message": f"Chyba při testu spojení: {str(last_err) if last_err else 'Neznámá chyba'}",
+        "message": "Chyba při testu spojení se vzdáleným modelem.",
         "key_pool": pool_status
     }
 

@@ -1,12 +1,17 @@
 from dataclasses import asdict
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from backend.auth_router import get_current_user
+from backend.models import User
 from backend.schemas import QueryRequest
 from backend.omnis_pipeline import assemble_omnis_cognitive_cycle
 
 engine_router = APIRouter(prefix="/api/omnis", tags=["OMNIS 5-Phase Engine"])
 
 @engine_router.post("/synthesize-5phases")
-async def synthesize_five_phases(request: QueryRequest) -> dict:
+async def synthesize_five_phases(
+    request: QueryRequest,
+    _current_user: User = Depends(get_current_user),
+) -> dict:
     """
     Vykoná a vrátí detailní rozpad všech 5 fází kognitivního cyklu O.M.N.I.S.
     včetně prospektivní forenzní analýzy rizik (T+1 až T+N).
@@ -37,7 +42,10 @@ from backend.schemas import SelfHealingRequest, SelfHealingResponse, PromptCorre
 from backend.gemini.prompt_engine import PromptEngine
 
 @engine_router.post("/self-heal-prompt", response_model=SelfHealingResponse)
-async def self_heal_prompt(req: SelfHealingRequest) -> SelfHealingResponse:
+async def self_heal_prompt(
+    req: SelfHealingRequest,
+    _current_user: User = Depends(get_current_user),
+) -> SelfHealingResponse:
     """
     Vykoná real-time self-healing analýzu promptu, detekuje anomálie a vrátí zkororigovaný prompt.
     """
@@ -49,7 +57,10 @@ from backend.schemas import CoSynthesisRequest, CoSynthesisResponse
 from backend.risk_forensics import ConsequenceRiskAnalyzer
 
 @engine_router.post("/co-synthesize-input", response_model=CoSynthesisResponse)
-async def co_synthesize_input(req: CoSynthesisRequest) -> CoSynthesisResponse:
+async def co_synthesize_input(
+    req: CoSynthesisRequest,
+    _current_user: User = Depends(get_current_user),
+) -> CoSynthesisResponse:
     """
     Vykoná před-exekuční rozbor vstupu operátora, predikuje T+1/T+2/T+3 kaskádu dopadů v 8D a navrhne 3 varianty spoludoplnění.
     """
@@ -103,7 +114,10 @@ async def co_synthesize_input(req: CoSynthesisRequest) -> CoSynthesisResponse:
 from backend.latent_causal_engine import LatentCausalEngine, LatentCausalState
 
 @engine_router.post("/analyze-latent-causality", response_model=LatentCausalState)
-async def analyze_latent_causality(req: CoSynthesisRequest) -> LatentCausalState:
+async def analyze_latent_causality(
+    req: CoSynthesisRequest,
+    _current_user: User = Depends(get_current_user),
+) -> LatentCausalState:
     """
     Vykoná analýzu skrytých kauzálních vazeb, Bettiho čísel, perkolace p_c a vytvoří PoN ledovec.
     """

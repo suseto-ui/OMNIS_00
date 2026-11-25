@@ -8,7 +8,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,10 +25,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.example.data.OmnisBatchSyncScheduler
 import com.example.data.OmnisBatchSyncWorker
+import com.example.data.SyncLogManager
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,57 +38,85 @@ import java.util.*
 @Composable
 fun SyncStatusComponent(
     modifier: Modifier = Modifier,
-    onTriggerSync: () -> Unit = {}
+    onTriggerSync: () -> Unit = {},
+    onOpenLogs: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val workManager = remember { WorkManager.getInstance(context) }
 
     val periodicInfos by workManager.getWorkInfosForUniqueWorkFlow(OmnisBatchSyncScheduler.PERIODIC_WORK_NAME)
-        .collectAsState(initial = emptyList())
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val immediateInfos by workManager.getWorkInfosForUniqueWorkFlow(OmnisBatchSyncScheduler.IMMEDIATE_WORK_NAME)
-        .collectAsState(initial = emptyList())
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val recoveryInfos by workManager.getWorkInfosForUniqueWorkFlow(OmnisBatchSyncScheduler.NETWORK_RECOVERY_WORK_NAME)
-        .collectAsState(initial = emptyList())
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val logLastSuccessTime by SyncLogManager.lastSuccessfulSyncTime.collectAsStateWithLifecycle()
 
     val allInfos = remember(periodicInfos, immediateInfos, recoveryInfos) {
         periodicInfos + immediateInfos + recoveryInfos
     }
 
     val activeWork = allInfos.firstOrNull { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+    val failedWork = allInfos.firstOrNull { it.state == WorkInfo.State.FAILED }
+    val blockedWork = allInfos.firstOrNull { it.state == WorkInfo.State.BLOCKED }
     val lastSuccessWork = allInfos.filter { it.state == WorkInfo.State.SUCCEEDED }
-        .maxByOrNull { it.runAttemptCount }
+        .maxByOrNull { it.outputData.getLong(OmnisBatchSyncWorker.KEY_LAST_SYNC_TIME, 0L) }
 
     val isRunning = activeWork?.state == WorkInfo.State.RUNNING
     val isEnqueued = activeWork?.state == WorkInfo.State.ENQUEUED
+    val isBlocked = activeWork == null && blockedWork != null
+    val hasFailed = activeWork == null && !isBlocked && failedWork != null
+
     val syncedCount = activeWork?.outputData?.getInt(OmnisBatchSyncWorker.KEY_SYNCED_COUNT, 0)
         ?: lastSuccessWork?.outputData?.getInt(OmnisBatchSyncWorker.KEY_SYNCED_COUNT, 0) ?: 0
+    val payloadBytes = lastSuccessWork?.outputData?.getLong(OmnisBatchSyncWorker.KEY_PAYLOAD_BYTES, 0L) ?: 0L
+
+    val workSuccessTime = lastSuccessWork?.outputData?.getLong(OmnisBatchSyncWorker.KEY_LAST_SYNC_TIME, 0L) ?: 0L
+    val effectiveLastSuccessTime = maxOf(workSuccessTime, logLastSuccessTime ?: 0L)
 
     val statusText = when {
         isRunning -> "Synchronizace probíhá..."
         isEnqueued -> "Čeká na síťové připojení..."
-        lastSuccessWork != null -> "Synchronizováno (Dávka: $syncedCount záznamů)"
+        isBlocked -> "Synchronizace pozastavena (čeká na podmínky)..."
+        hasFailed -> "Poslední synchronizace selhala (zkontrolujte logy)"
+        lastSuccessWork != null || logLastSuccessTime != null -> {
+            val payloadInfo = if (payloadBytes > 0L) {
+                if (payloadBytes < 1024L) " · $payloadBytes B"
+                else String.format(Locale.US, " · %.1f KB", payloadBytes / 1024.0)
+            } else ""
+            "Synchronizováno (Dávka: $syncedCount záznamů$payloadInfo)"
+        }
         else -> "Připraveno k synchronizaci"
     }
 
     val statusColor = when {
         isRunning || isEnqueued -> OmnisCyan
-        lastSuccessWork != null -> OmnisEmerald
+        hasFailed -> OmnisRed
+        isBlocked -> OmnisAmber
+        lastSuccessWork != null || logLastSuccessTime != null -> OmnisEmerald
         else -> OmnisTextMuted
     }
 
     val statusIcon = when {
         isRunning || isEnqueued -> Icons.Default.CloudSync
-        lastSuccessWork != null -> Icons.Default.CloudDone
+        hasFailed -> Icons.Default.Error
+        isBlocked -> Icons.Default.CloudOff
+        lastSuccessWork != null || logLastSuccessTime != null -> Icons.Default.CloudDone
         else -> Icons.Default.Sync
     }
 
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss dd.MM.yyyy", Locale.getDefault()) }
-    var lastSuccessTimeStr by remember { mutableStateOf("Neznámo") }
+    val badgeLabel = when {
+        isRunning -> "SYNC"
+        isEnqueued -> "QUEUE"
+        isBlocked -> "WAIT"
+        hasFailed -> "FAIL"
+        lastSuccessWork != null || logLastSuccessTime != null -> "OK"
+        else -> "READY"
+    }
 
-    LaunchedEffect(lastSuccessWork) {
-        if (lastSuccessWork != null) {
-            lastSuccessTimeStr = dateFormat.format(Date())
-        }
+    val dateFormat = remember { SimpleDateFormat("HH:mm:ss dd.MM.yyyy", Locale.getDefault()) }
+    val lastSuccessTimeStr = remember(effectiveLastSuccessTime) {
+        if (effectiveLastSuccessTime > 0L) dateFormat.format(Date(effectiveLastSuccessTime)) else "Žádná"
     }
 
     Card(
@@ -106,6 +139,7 @@ fun SyncStatusComponent(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
+                    modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -140,15 +174,31 @@ fun SyncStatusComponent(
                     }
                 }
 
-                IconButton(
-                    onClick = onTriggerSync,
-                    modifier = Modifier.testTag("btn_manual_sync")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Sync,
-                        contentDescription = "Spustit synchronizaci",
-                        tint = OmnisCyan
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onOpenLogs,
+                        modifier = Modifier
+                            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                            .testTag("btn_open_sync_logs")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = "Historie synchronizace",
+                            tint = OmnisTextMuted
+                        )
+                    }
+                    IconButton(
+                        onClick = onTriggerSync,
+                        modifier = Modifier
+                            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                            .testTag("btn_manual_sync")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Spustit synchronizaci",
+                            tint = OmnisCyan
+                        )
+                    }
                 }
             }
 
@@ -174,14 +224,14 @@ fun SyncStatusComponent(
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace
                 )
-                
+
                 Surface(
                     shape = RoundedCornerShape(4.dp),
-                    color = if (isRunning) OmnisCyan.copy(alpha = 0.2f) else OmnisEmerald.copy(alpha = 0.2f)
+                    color = statusColor.copy(alpha = 0.2f)
                 ) {
                     Text(
-                        text = if (isRunning) "SYNC" else "READY",
-                        color = if (isRunning) OmnisCyan else OmnisEmerald,
+                        text = badgeLabel,
+                        color = statusColor,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)

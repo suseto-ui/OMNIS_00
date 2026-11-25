@@ -25,7 +25,7 @@ object BiometricAuthenticator {
                 val packageManager = context.packageManager
                 packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_FINGERPRINT)
             } else {
-                true
+                false
             }
         } catch (e: Exception) {
             Log.w(TAG, "Chyba při kontrole biometrie: ${e.message}")
@@ -77,11 +77,11 @@ object BiometricAuthenticator {
                     }
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "Nativní biometrie selhala, spouštím bezpečný bypass: ${e.message}", e)
-                callback.onSuccess()
+                Log.e(TAG, "Nativní biometrie selhala: ${e.message}", e)
+                callback.onFailure("Biometrické ověření není dostupné nebo selhalo.")
             }
         } else {
-            callback.onSuccess()
+            callback.onFailure("Zařízení nepodporuje nativní biometrické ověření (vyžadován Android 9+).")
         }
     }
 }

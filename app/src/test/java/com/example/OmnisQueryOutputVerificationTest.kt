@@ -65,6 +65,15 @@ class FakeOmnisDao : OmnisDao {
         recordsFlow.value = recordsFlow.value + records
     }
 
+    override suspend fun insertRecordsReturningIds(records: List<OmnisRecord>): List<Long> {
+        val baseId = recordsFlow.value.size.toLong()
+        val withIds = records.mapIndexed { idx, rec ->
+            if (rec.id > 0L) rec else rec.copy(id = baseId + idx + 1L)
+        }
+        recordsFlow.value = recordsFlow.value + withIds
+        return withIds.map { it.id }
+    }
+
     override suspend fun deleteThread(threadId: String) {
         recordsFlow.value = recordsFlow.value.filter { it.threadId != threadId }
     }
@@ -113,6 +122,12 @@ class FakeOmnisDao : OmnisDao {
 
     override suspend fun markAllAsSynced() {
         recordsFlow.value = recordsFlow.value.map { it.copy(isSyncedToPostgres = true) }
+    }
+
+    override suspend fun pruneOldSyncedRecords(cutoffTimestamp: Long): Int {
+        val before = recordsFlow.value.size
+        recordsFlow.value = recordsFlow.value.filterNot { it.isSyncedToPostgres && it.timestamp < cutoffTimestamp }
+        return before - recordsFlow.value.size
     }
 
     override suspend fun insertGoal(goal: OmnisGoal): Long {

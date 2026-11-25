@@ -757,7 +757,7 @@ class GeminiCognitiveService:
         follow_ups = [
             "Jak doplnit předplacený kredit na https://ai.studio/projects?",
             "Jak nastavit nový API klíč v Secrets panelu?",
-            "Ověřit stav připojení k databázi Cloud SQL?"
+            "Ověřit stav připojení k databázi PostgreSQL 17?"
         ]
 
         matrix = ImpactMatrixScores(

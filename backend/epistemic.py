@@ -4,23 +4,38 @@ Handles document chunking, semantic vector indexing, multi-modal ingestion, and 
 """
 
 from __future__ import annotations
+import os
+import re
 import uuid
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.admin_router import get_current_admin
+from backend.auth_router import get_current_user
 from backend.database import get_db, async_session_factory
-from backend.models import VectorMemory
+from backend.models import VectorMemory, User
 from backend.schemas import OmnisEntityIngestion
 from backend.memory import background_record_vector_memory
 from backend.gemini_service import cognitive_service
 
 logger = logging.getLogger("omnis.epistemic")
 epistemic_router = APIRouter(prefix="/api/epistemic", tags=["OMNIS Epistemic Layer"])
+
+_ALLOWED_UPLOAD_EXTENSIONS = {".md", ".txt", ".json", ".py", ".kt", ".csv"}
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
+
+def _sanitize_upload_filename(raw_name: Optional[str]) -> str:
+    base = os.path.basename((raw_name or "").strip())
+    if not base:
+        return "uploaded_document.txt"
+    sanitized = re.sub(r"[^A-Za-z0-9._-]", "_", base)[:120]
+    return sanitized or "uploaded_document.txt"
 
 
 class DocumentIngestRequest(BaseModel):
@@ -93,6 +108,7 @@ async def _async_index_document_chunks(
 async def ingest_epistemic_data(
     payload: OmnisEntityIngestion,
     background_tasks: BackgroundTasks,
+    _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Standardní ingestace epistemické entity dle Blueprintu."""
     summary = (
@@ -119,6 +135,7 @@ async def ingest_epistemic_data(
 async def ingest_document_text(
     payload: DocumentIngestRequest,
     background_tasks: BackgroundTasks,
+    _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Rozdělí text na sémantické bloky a asynchronně je uloží s vektorovým indexem."""
     doc_id = str(uuid.uuid4())
@@ -150,25 +167,37 @@ async def upload_document_file(
     file: UploadFile = File(...),
     domain: str = Form("SYSTEMS_INTELLIGENCE"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
+    _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Příjem technických textových souborů (.md, .txt, .json, .py, .kt, .csv) pro indexaci do sémantické paměti."""
-    try:
-        raw_bytes = await file.read()
-        text_content = raw_bytes.decode("utf-8", errors="replace")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Chyba při čtení souboru: {exc}")
+    safe_filename = _sanitize_upload_filename(file.filename)
+    _, ext = os.path.splitext(safe_filename.lower())
+    if ext not in _ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail="Nepodporovaný typ souboru. Povolené přípony: .md, .txt, .json, .py, .kt, .csv.",
+        )
 
+    try:
+        raw_bytes = await file.read(_MAX_UPLOAD_BYTES + 1)
+    except Exception as exc:
+        logger.warning("Chyba při čtení nahraného souboru: %s", exc)
+        raise HTTPException(status_code=400, detail="Chyba při čtení nahraného souboru.")
+
+    if len(raw_bytes) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Nahraný soubor překračuje limit 5 MB.")
+
+    text_content = raw_bytes.decode("utf-8", errors="replace")
     if not text_content.strip():
         raise HTTPException(status_code=400, detail="Nahraný soubor je prázdný.")
 
     doc_id = str(uuid.uuid4())
-    title = file.filename or "uploaded_document"
     chunks = _chunk_text(text_content, chunk_size=600, overlap=120)
 
     background_tasks.add_task(
         _async_index_document_chunks,
         document_id=doc_id,
-        title=title,
+        title=safe_filename,
         chunks=chunks,
         domain=domain,
         importance_score=1.2,
@@ -177,15 +206,18 @@ async def upload_document_file(
     return {
         "status": "queued",
         "document_id": doc_id,
-        "filename": title,
+        "filename": safe_filename,
         "file_size_bytes": len(raw_bytes),
         "total_chunks": len(chunks),
-        "message": f"Soubor '{title}' byl úspěšně přijat a {len(chunks)} bloků se indexuje do pgvector paměti.",
+        "message": f"Soubor '{safe_filename}' byl úspěšně přijat a {len(chunks)} bloků se indexuje do pgvector paměti.",
     }
 
 
 @epistemic_router.get("/stats")
-async def get_epistemic_stats(db: AsyncSession = Depends(get_db)) -> dict:
+async def get_epistemic_stats(
+    _current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     """Vrací telemetrii a statistiky sémantické paměti a vektorové báze."""
     try:
         total_stmt = select(func.count(VectorMemory.id))
@@ -218,8 +250,9 @@ async def get_epistemic_stats(db: AsyncSession = Depends(get_db)) -> dict:
 
 @epistemic_router.get("/export")
 async def export_epistemic_memories(
-    limit: int = 50,
-    db: AsyncSession = Depends(get_db)
+    limit: int = Query(50, ge=1, le=500),
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Záloha a export sémantické paměti pro disaster recovery."""
     try:
@@ -242,10 +275,10 @@ async def export_epistemic_memories(
             ]
         }
     except Exception as exc:
-        logger.error(f"Failed to export epistemic memories: {exc}")
+        logger.error("Failed to export epistemic memories: %s", exc)
         return {
             "export_count": 0,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "items": [],
-            "error": str(exc)
+            "error": "Export sémantické paměti selhal."
         }

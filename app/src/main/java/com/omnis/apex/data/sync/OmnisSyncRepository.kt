@@ -25,7 +25,9 @@ class OmnisSyncRepository(private val context: Context) {
 
     private val okHttpClient: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BASIC
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
+            redactHeader("Authorization")
+            redactHeader("X-OMNIS-API-KEY")
         }
         OkHttpClient.Builder()
             .addInterceptor(logging)
@@ -64,6 +66,8 @@ class OmnisSyncRepository(private val context: Context) {
         val bearer = resolveBearerToken()
         val syncApiKey = DatabaseConfig.getBuildConfigValue("OMNIS_SYNC_API_KEY")?.takeIf { it.isNotBlank() }
 
+        var attemptPayloadBytes = 0L
+        val startMs = System.currentTimeMillis()
         return@withContext try {
             val itemsArray = JSONArray()
             for (item in pendingItems) {
@@ -84,8 +88,10 @@ class OmnisSyncRepository(private val context: Context) {
                 put("client_version", "4.5")
             }
 
+            val payloadBytes = batchPayload.toString().toByteArray(Charsets.UTF_8)
+            attemptPayloadBytes = payloadBytes.size.toLong()
             val mediaType = "application/json; charset=utf-8".toMediaType()
-            val body = batchPayload.toString().toRequestBody(mediaType)
+            val body = payloadBytes.toRequestBody(mediaType)
             val reqBuilder = Request.Builder()
                 .url("$backendUrl/api/v1/sync/batch")
                 .post(body)
@@ -93,6 +99,7 @@ class OmnisSyncRepository(private val context: Context) {
             syncApiKey?.let { reqBuilder.header("X-OMNIS-API-KEY", it) }
 
             okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                val durationMs = System.currentTimeMillis() - startMs
                 if (response.isSuccessful) {
                     db.outboxDao().markSynced(pendingItems.map { it.id })
                     val messageIds = pendingItems
@@ -101,15 +108,42 @@ class OmnisSyncRepository(private val context: Context) {
                     if (messageIds.isNotEmpty()) {
                         db.omnisDao().markRecordsAsSynced(messageIds)
                     }
+                    com.example.data.SyncLogManager.logSync(
+                        taskType = "ElectricSQL / Outbox Repository",
+                        success = true,
+                        syncedCount = pendingItems.size,
+                        payloadSizeBytes = attemptPayloadBytes,
+                        durationMs = durationMs,
+                        message = "Odesláno ${pendingItems.size} položek do PostgreSQL 17 / ElectricSQL (HTTP ${response.code})."
+                    )
                     pendingItems.size
                 } else {
-                    pendingItems.forEach { db.outboxDao().markFailed(it.id, "HTTP status ${response.code}") }
+                    val failMsg = "HTTP status ${response.code}: ${response.message}"
+                    pendingItems.forEach { db.outboxDao().markFailed(it.id, failMsg.take(250)) }
+                    com.example.data.SyncLogManager.logSync(
+                        taskType = "ElectricSQL / Outbox Repository",
+                        success = false,
+                        syncedCount = 0,
+                        payloadSizeBytes = attemptPayloadBytes,
+                        durationMs = durationMs,
+                        message = failMsg
+                    )
                     0
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to sync outbox batch: ${e.message}")
-            pendingItems.forEach { db.outboxDao().markFailed(it.id, e.message ?: "Unknown error") }
+            val durationMs = System.currentTimeMillis() - startMs
+            val errMsg = e.message ?: "Unknown error"
+            Log.e(TAG, "Failed to sync outbox batch: $errMsg")
+            pendingItems.forEach { db.outboxDao().markFailed(it.id, errMsg.take(250)) }
+            com.example.data.SyncLogManager.logSync(
+                taskType = "ElectricSQL / Outbox Repository",
+                success = false,
+                syncedCount = 0,
+                payloadSizeBytes = attemptPayloadBytes,
+                durationMs = durationMs,
+                message = "Výjimka při přenosu: $errMsg"
+            )
             0
         }
     }

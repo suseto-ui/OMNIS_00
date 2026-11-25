@@ -39,9 +39,11 @@ class UserActivityLogger(
         coroutineScope.launch {
             try {
                 logDao.insertLog(entry)
-                Log.i("UserActivityLogger", "[$severity] $userId: $action - $details")
+                if (com.example.BuildConfig.DEBUG) {
+                    Log.i("UserActivityLogger", "[$severity] $action")
+                }
             } catch (e: Exception) {
-                Log.e("UserActivityLogger", "Failed to insert audit log entry", e)
+                Log.e("UserActivityLogger", "Failed to insert audit log entry")
             }
         }
     }

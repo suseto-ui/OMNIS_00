@@ -12,7 +12,7 @@ SET search_path = ag_catalog, "$user", public;
 
 -- ==============================================================================
 -- 1. Least-Privilege Database Roles (Idempotent Provisioning)
--- Passwords should be rotated immediately in production via Secret Manager / ALTER ROLE.
+-- Passwords should be rotated immediately in production via .env / ALTER ROLE.
 -- ==============================================================================
 DO $$
 BEGIN

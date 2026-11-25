@@ -52,7 +52,9 @@ object GoogleAuthManager {
         if (authListener == null) {
             val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
                 _currentUser.value = firebaseAuth.currentUser
-                Log.d(TAG, "Auth state changed: user=${firebaseAuth.currentUser?.email}")
+                if (com.example.BuildConfig.DEBUG) {
+                    Log.d(TAG, "Auth state changed: uid=${firebaseAuth.currentUser?.uid ?: "none"}")
+                }
             }
             authListener = listener
             auth.addAuthStateListener(listener)
@@ -158,7 +160,9 @@ object GoogleAuthManager {
                     _currentUser.value = user
                     _isAuthenticating.value = false
                     if (user != null) {
-                        Log.i(TAG, "Přihlášení úspěšné: ${user.email} (${user.uid})")
+                        if (com.example.BuildConfig.DEBUG) {
+                            Log.i(TAG, "Přihlášení úspěšné (uid=${user.uid})")
+                        }
                         onSuccess(user)
                     } else {
                         onError("Přihlášení se nezdařilo: prázdný uživatel")

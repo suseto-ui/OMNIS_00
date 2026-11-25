@@ -165,6 +165,9 @@ object OmnisGeminiClient {
         private val entries = mutableListOf<KeyEntry>()
         private var roundRobinPointer = 0
         private const val PREFS_NAME = "omnis_custom_keys_prefs"
+        private const val SECURE_KEY_1 = "custom_gemini_key_1"
+        private const val SECURE_KEY_2 = "custom_gemini_key_2"
+        private const val SECURE_KEY_3 = "custom_gemini_key_3"
 
         init {
             refresh()
@@ -172,21 +175,37 @@ object OmnisGeminiClient {
 
         fun initFromContext(context: Context) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val custom1 = prefs.getString("custom_gemini_key_1", null)
-            val custom2 = prefs.getString("custom_gemini_key_2", null)
-            val custom3 = prefs.getString("custom_gemini_key_3", null)
+            val legacy1 = prefs.getString(SECURE_KEY_1, null)?.trim()?.ifBlank { null }
+            val legacy2 = prefs.getString(SECURE_KEY_2, null)?.trim()?.ifBlank { null }
+            val legacy3 = prefs.getString(SECURE_KEY_3, null)?.trim()?.ifBlank { null }
+
+            if (legacy1 != null || legacy2 != null || legacy3 != null) {
+                legacy1?.let { com.example.security.OmnisSecureStorage.encryptAndStore(context, SECURE_KEY_1, it) }
+                legacy2?.let { com.example.security.OmnisSecureStorage.encryptAndStore(context, SECURE_KEY_2, it) }
+                legacy3?.let { com.example.security.OmnisSecureStorage.encryptAndStore(context, SECURE_KEY_3, it) }
+                prefs.edit().clear().apply()
+            }
+
+            val custom1 = com.example.security.OmnisSecureStorage.decryptAndRetrieve(context, SECURE_KEY_1)
+            val custom2 = com.example.security.OmnisSecureStorage.decryptAndRetrieve(context, SECURE_KEY_2)
+            val custom3 = com.example.security.OmnisSecureStorage.decryptAndRetrieve(context, SECURE_KEY_3)
 
             refresh(custom1, custom2, custom3)
         }
 
         fun saveCustomKeys(context: Context, key1: String?, key2: String?, key3: String?) {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().apply {
-                putString("custom_gemini_key_1", key1?.trim()?.ifBlank { null })
-                putString("custom_gemini_key_2", key2?.trim()?.ifBlank { null })
-                putString("custom_gemini_key_3", key3?.trim()?.ifBlank { null })
-                apply()
+            fun storeOrRemove(storageKey: String, raw: String?) {
+                val clean = raw?.trim()?.ifBlank { null }
+                if (clean != null) {
+                    com.example.security.OmnisSecureStorage.encryptAndStore(context, storageKey, clean)
+                } else {
+                    com.example.security.OmnisSecureStorage.removeKey(context, storageKey)
+                }
             }
+            storeOrRemove(SECURE_KEY_1, key1)
+            storeOrRemove(SECURE_KEY_2, key2)
+            storeOrRemove(SECURE_KEY_3, key3)
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
             refresh(key1, key2, key3)
         }
 
@@ -355,12 +374,17 @@ object OmnisGeminiClient {
 
     // 60-second timeouts per Gemini API best-practice guidelines
     private val okHttpClient: OkHttpClient by lazy {
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (com.example.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
+            redactHeader("x-goog-api-key")
+            redactHeader("Authorization")
+        }
         OkHttpClient.Builder()
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
-            .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+            .addInterceptor(logging)
             .build()
     }
 
@@ -421,7 +445,7 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
         for (keyEntry in availableKeys) {
             val apiKey = keyEntry.key
             for (model in opponentModels) {
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
                 try {
                     val opponentPrompt = """
                         Jsi Nezávislý Skeptický Oponent a Bezpečnostní Auditor O.M.N.I.S.
@@ -456,7 +480,11 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
 
                     val mediaType = "application/json; charset=utf-8".toMediaType()
                     val requestBody = requestJson.toString().toRequestBody(mediaType)
-                    val request = Request.Builder().url(url).post(requestBody).build()
+                    val request = Request.Builder()
+                        .url(url)
+                        .header("x-goog-api-key", apiKey)
+                        .post(requestBody)
+                        .build()
                     val response = okHttpClient.newCall(request).execute()
                     if (!response.isSuccessful) {
                         if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
@@ -789,9 +817,10 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
             keyLoop@ for (keyEntry in orderedKeys) {
                 val apiKey = keyEntry.key
                 for (candidateModel in PRIMARY_TEXT_MODELS) {
-                    val candidateUrl = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent?key=$apiKey"
+                    val candidateUrl = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
                     val request = Request.Builder()
                         .url(candidateUrl)
+                        .header("x-goog-api-key", apiKey)
                         .post(requestBody)
                         .build()
 
@@ -807,7 +836,7 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
                             lastErrCode = response.code
                             lastErrBody = response.body?.string() ?: ""
                             lastRetryAfterSec = response.header("Retry-After")?.trim()?.toLongOrNull()
-                            Log.w(TAG, "Model $candidateModel s klíčem ${keyEntry.name} selhal s HTTP $lastErrCode ($lastErrBody).")
+                            Log.w(TAG, "Model $candidateModel s klíčem ${keyEntry.name} selhal s HTTP $lastErrCode.")
                             if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
                                 KeyPool.markFailure(apiKey, response.code, lastErrBody, lastRetryAfterSec)
                                 break // Okamžitá rotace na další klíč v kruhovém fondu
@@ -822,7 +851,7 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
             val latency = System.currentTimeMillis() - startTime
 
             if (successfulResponse == null || successfulModel == null || successfulKeyEntry == null) {
-                val errMsg = "Všechny Gemini API klíče v rotaci (${orderedKeys.map { it.name }}) a modely (${PRIMARY_TEXT_MODELS.joinToString()}) selhaly (poslední HTTP $lastErrCode: $lastErrBody)."
+                val errMsg = "Všechny Gemini API klíče v rotaci (${orderedKeys.map { it.name }}) a modely (${PRIMARY_TEXT_MODELS.joinToString()}) selhaly (poslední HTTP $lastErrCode: ${lastErrBody.take(200)})."
                 Log.w(TAG, errMsg)
                 _lastOnlineError.value = errMsg
                 circuitBreaker.recordFailure()
@@ -1278,7 +1307,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
         for (keyEntry in orderedKeys) {
             val apiKey = keyEntry.key
             for (candidateModel in PRIMARY_TEXT_MODELS) {
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent?key=$apiKey"
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
                 try {
                     val requestJson = JSONObject().apply {
                         put("contents", JSONArray().apply {
@@ -1301,7 +1330,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
                     }
 
                     val mediaType = "application/json; charset=utf-8".toMediaType()
-                    val request = Request.Builder().url(url).post(requestJson.toString().toRequestBody(mediaType)).build()
+                    val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestJson.toString().toRequestBody(mediaType)).build()
                     val response = okHttpClient.newCall(request).execute()
                     val latency = System.currentTimeMillis() - startTime
 
@@ -1597,7 +1626,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
 
         for (keyEntry in orderedKeys) {
             val apiKey = keyEntry.key
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent?key=$apiKey"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
             try {
                 val requestJson = JSONObject().apply {
                     val contentsArr = JSONArray().apply {
@@ -1621,7 +1650,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
 
                 val mediaType = "application/json; charset=utf-8".toMediaType()
                 val requestBody = requestJson.toString().toRequestBody(mediaType)
-                val request = Request.Builder().url(url).post(requestBody).build()
+                val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestBody).build()
 
                 val response = okHttpClient.newCall(request).execute()
                 if (!response.isSuccessful) {
@@ -1659,7 +1688,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
         for (keyEntry in orderedKeys) {
             val apiKey = keyEntry.key
             for (candidateModel in VISION_MODELS) {
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent?key=$apiKey"
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
                 try {
                     val requestJson = JSONObject().apply {
                         val contentsArr = JSONArray().apply {
@@ -1690,7 +1719,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
 
                     val mediaType = "application/json; charset=utf-8".toMediaType()
                     val requestBody = requestJson.toString().toRequestBody(mediaType)
-                    val request = Request.Builder().url(url).post(requestBody).build()
+                    val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestBody).build()
 
                     val response = okHttpClient.newCall(request).execute()
                     if (!response.isSuccessful) {
@@ -1728,7 +1757,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
         for (keyEntry in orderedKeys) {
             val apiKey = keyEntry.key
             for (candidateModel in PRIMARY_TEXT_MODELS) {
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent?key=$apiKey"
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
                 try {
                     val requestJson = JSONObject().apply {
                         val contentsArr = JSONArray().apply {
@@ -1759,7 +1788,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
 
                     val mediaType = "application/json; charset=utf-8".toMediaType()
                     val requestBody = requestJson.toString().toRequestBody(mediaType)
-                    val request = Request.Builder().url(url).post(requestBody).build()
+                    val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestBody).build()
 
                     val response = okHttpClient.newCall(request).execute()
                     if (!response.isSuccessful) {
@@ -1796,7 +1825,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
         for (keyEntry in orderedKeys) {
             val apiKey = keyEntry.key
             for (candidateModel in PRIMARY_TEXT_MODELS) {
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent?key=$apiKey"
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
 
                 try {
                     var recordsData = ""
@@ -1839,7 +1868,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
 
                     val mediaType = "application/json; charset=utf-8".toMediaType()
                     val requestBody = requestJson.toString().toRequestBody(mediaType)
-                    val request = Request.Builder().url(url).post(requestBody).build()
+                    val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestBody).build()
                     val response = okHttpClient.newCall(request).execute()
                     if (!response.isSuccessful) {
                         if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
@@ -1915,7 +1944,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
         for (keyEntry in orderedKeys) {
             val apiKey = keyEntry.key
             for (candidateModel in PRIMARY_TEXT_MODELS) {
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent?key=$apiKey"
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
                 try {
                     val requestJson = JSONObject().apply {
                         put("contents", JSONArray().apply {
@@ -1932,7 +1961,7 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
                     }
 
                     val mediaType = "application/json; charset=utf-8".toMediaType()
-                    val request = Request.Builder().url(url).post(requestJson.toString().toRequestBody(mediaType)).build()
+                    val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestJson.toString().toRequestBody(mediaType)).build()
                     val response = okHttpClient.newCall(request).execute()
 
                     if (!response.isSuccessful) {

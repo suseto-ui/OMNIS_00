@@ -1,12 +1,16 @@
 package com.example.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Error
@@ -29,10 +33,22 @@ import java.util.*
 
 @Composable
 fun SyncLogScreen(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = {}
 ) {
+    BackHandler { onBack() }
+
     val logs by SyncLogManager.logs.collectAsStateWithLifecycle()
     var filterMode by remember { mutableStateOf("ALL") }
+
+    val stats = remember(logs) {
+        val total = logs.size
+        val succeeded = logs.count { it.success }
+        val successRate = if (total > 0) (succeeded * 100) / total else 0
+        val totalBytes = logs.sumOf { it.payloadSizeBytes }
+        val avgDurationMs = if (total > 0) logs.sumOf { it.durationMs } / total else 0L
+        SyncDiagnosticSummary(total, succeeded, successRate, totalBytes, avgDurationMs)
+    }
 
     val filteredLogs = remember(logs, filterMode) {
         when (filterMode) {
@@ -48,6 +64,7 @@ fun SyncLogScreen(
         modifier = modifier
             .fillMaxSize()
             .background(OmnisBgDark)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(16.dp)
             .testTag("sync_log_screen")
     ) {
@@ -56,25 +73,45 @@ fun SyncLogScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    text = "SYNC DIAGNOSTIC LOGS",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "Historie pozadových synchronizací ElectricSQL & PostgreSQL",
-                    color = OmnisTextMuted,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                )
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .testTag("btn_sync_logs_back")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Zpět",
+                        tint = OmnisCyan
+                    )
+                }
+                Column {
+                    Text(
+                        text = "SYNC DIAGNOSTIC LOGS",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "Historie synchronizací ElectricSQL & PostgreSQL 17",
+                        color = OmnisTextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
             }
 
             IconButton(
                 onClick = { SyncLogManager.clearLogs() },
-                modifier = Modifier.testTag("btn_clear_sync_logs")
+                modifier = Modifier
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .testTag("btn_clear_sync_logs")
             ) {
                 Icon(
                     imageVector = Icons.Default.ClearAll,
@@ -84,30 +121,39 @@ fun SyncLogScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        SyncDiagnosticSummaryStrip(stats = stats)
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilterChip(
                 selected = filterMode == "ALL",
                 onClick = { filterMode = "ALL" },
-                label = { Text("Všechny (${logs.size})") }
+                label = { Text("Všechny (${logs.size})") },
+                modifier = Modifier.testTag("chip_sync_all")
             )
             FilterChip(
                 selected = filterMode == "SUCCESS",
                 onClick = { filterMode = "SUCCESS" },
-                label = { Text("Úspěšné (${logs.count { it.success }})") }
+                label = { Text("Úspěšné (${stats.succeededCount})") },
+                modifier = Modifier.testTag("chip_sync_success")
             )
             FilterChip(
                 selected = filterMode == "FAILURE",
                 onClick = { filterMode = "FAILURE" },
-                label = { Text("Chyby (${logs.count { !it.success }})") }
+                label = { Text("Chyby (${stats.totalRuns - stats.succeededCount})") },
+                modifier = Modifier.testTag("chip_sync_failure")
             )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         if (filteredLogs.isEmpty()) {
             Box(
@@ -138,15 +184,83 @@ fun SyncLogScreen(
     }
 }
 
+private data class SyncDiagnosticSummary(
+    val totalRuns: Int,
+    val succeededCount: Int,
+    val successRatePercent: Int,
+    val totalPayloadBytes: Long,
+    val avgDurationMs: Long
+)
+
+@Composable
+private fun SyncDiagnosticSummaryStrip(stats: SyncDiagnosticSummary) {
+    val totalPayloadText = remember(stats.totalPayloadBytes) {
+        formatSyncPayloadBytes(stats.totalPayloadBytes)
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("sync_diagnostic_summary"),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = OmnisCardDark),
+        border = BorderStroke(1.dp, OmnisBorderDark)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SummaryMetricCell("OPERACÍ", "${stats.totalRuns}", Color.White)
+            SummaryMetricCell(
+                "ÚSPĚŠNOST",
+                "${stats.successRatePercent}%",
+                if (stats.successRatePercent >= 80 || stats.totalRuns == 0) OmnisEmerald else OmnisAmber
+            )
+            SummaryMetricCell("PŘENESENO", totalPayloadText, OmnisCyan)
+            SummaryMetricCell("PRŮM. ČAS", "${stats.avgDurationMs} ms", OmnisViolet)
+        }
+    }
+}
+
+@Composable
+private fun SummaryMetricCell(label: String, value: String, valueColor: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = label,
+            color = OmnisTextMuted,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            color = valueColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+private fun formatSyncPayloadBytes(bytes: Long): String {
+    return if (bytes < 1024L) "$bytes B"
+    else String.format(Locale.US, "%.2f KB", bytes / 1024.0)
+}
+
 @Composable
 fun SyncLogItemCard(entry: SyncLogEntry, dateFormat: SimpleDateFormat) {
     val statusColor = if (entry.success) OmnisEmerald else OmnisRed
     val statusIcon = if (entry.success) Icons.Default.CheckCircle else Icons.Default.Error
     val formattedTime = remember(entry.timestamp) { dateFormat.format(Date(entry.timestamp)) }
-    val payloadKb = String.format(Locale.US, "%.2f KB", entry.payloadSizeBytes / 1024.0)
+    val payloadText = remember(entry.payloadSizeBytes) { formatSyncPayloadBytes(entry.payloadSizeBytes) }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("sync_log_item_${entry.id}"),
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = OmnisCardDark),
         border = BorderStroke(1.dp, statusColor.copy(alpha = 0.3f))
@@ -163,6 +277,7 @@ fun SyncLogItemCard(entry: SyncLogEntry, dateFormat: SimpleDateFormat) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
+                    modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -201,13 +316,19 @@ fun SyncLogItemCard(entry: SyncLogEntry, dateFormat: SimpleDateFormat) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Synchronizováno položek: ${entry.syncedCount}",
+                    text = "Položky: ${entry.syncedCount}",
                     color = OmnisTextMuted,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "Velikost payloadu: $payloadKb",
+                    text = "Čas: ${entry.durationMs} ms",
+                    color = OmnisViolet,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "Payload: $payloadText",
                     color = OmnisCyan,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
