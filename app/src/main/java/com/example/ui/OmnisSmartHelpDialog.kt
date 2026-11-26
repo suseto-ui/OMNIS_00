@@ -38,9 +38,9 @@ fun OmnisSmartHelpDialog(
     val faqs = listOf(
         "Jak vytvořit nové vlákno?" to "V bočním menu (otevřete ikonou vlevo nahoře) klikněte na tlačítko '+ Nové vlákno'. Vlákno můžete také přejmenovat ikonou tužky.",
         "Jak přiložit soubor nebo fotku?" to "Ve spodním panelu chatu použijte tlačítko '+' pro přiložení souborů (PDF, texty, kódy) nebo výběr fotky přes systémový Android Photo Picker bez plošných oprávnění, případně ikonu fotoaparátu pro OCR skenování.",
-        "Jak exportovat celou konverzaci?" to "V horní liště chatu klikněte na ikonu sdílení (Share) a zvolte export do PDF nebo Markdownu (.md).",
+        "Jak exportovat celou konverzaci?" to "V horní liště chatu otevřete nabídku tří teček (⋮) a zvolte export do PDF nebo Markdownu (.md).",
         "Co dělá Gatekeeper G1–G6 a Dual-Gate?" to "Vrstva Gatekeeper G1–G6 postupně validuje a sanitizuje dotazy, PII údaje, 8D váhy i 64D embeddingy před vstupem do Matice dopadů a při chybě (např. NaN nebo nulový vektor) okamžitě přeruší řetězec. Refusal Ladder navíc kontroluje i samotný vygenerovaný výstup modelu.",
-        "Co dělá Jistič (Circuit Breaker) při HTTP 429?" to "Při výpadku nebo limitu API (HTTP 429) jistič respektuje hlavičku Retry-After (5–300 s), zobrazí v chatu banner degradovaného režimu a přepne na bezpečný deterministický fallback."
+        "Co dělá Jistič (Circuit Breaker) při HTTP 429?" to "Při výpadku nebo limitu API (HTTP 429) jistič respektuje hlavičku Retry-After (5–300 s), zobrazí v chatu banner degradovaného režimu a přepne do bezpečného deterministického záložního režimu."
     )
 
     val filteredFaqs = faqs.filter { 
@@ -155,26 +155,26 @@ fun OmnisSmartHelpDialog(
                             ) {
                                 item {
                                     HelpCard(
-                                        title = "1. Sémantické Promptování",
+                                        title = "1. Sémantické zadávání dotazů",
                                         description = "Zadávejte strukturované dotazy: [Doména] + [Akce] + [Kritérium]. Systém vás bude automaticky navádět nápovědou nad vstupním polem."
                                     )
                                 }
                                 item {
                                     HelpCard(
-                                        title = "2. Správa Vláken & Historie",
+                                        title = "2. Správa vláken a historie",
                                         description = "V levém panelu můžete vytvářet nová vlákna, přejmenovávat existující (ikona tužky) nebo mazat nepotřebná konverzační vlákna."
                                     )
                                 }
                                 item {
                                     HelpCard(
-                                        title = "3. Multimodální Vstupy & OCR",
+                                        title = "3. Multimodální vstupy a OCR",
                                         description = "Přikládejte dokumenty (PDF, kódy, Office) nebo skenujte text z fotek přes vestavěný OCR modul s náhledem."
                                     )
                                 }
                                 item {
                                     HelpCard(
                                         title = "4. Exporty do PDF / Markdownu",
-                                        description = "Kompletní konverzace lze kdykoliv jedním kliknutím exportovat a sdílet jako formátovaný PDF dokument nebo Markdown (.md)."
+                                        description = "Kompletní konverzace lze kdykoliv přes nabídku tří teček (⋮) exportovat a sdílet jako formátovaný PDF dokument nebo Markdown (.md)."
                                     )
                                 }
                             }
@@ -243,7 +243,7 @@ fun OmnisSmartHelpDialog(
                                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Icon(Icons.Default.Psychology, contentDescription = null, tint = OmnisCyan, modifier = Modifier.size(18.dp))
-                                            Text("Odpověď Asistenta:", color = OmnisCyan, fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                                            Text("Odpověď asistenta:", color = OmnisCyan, fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                                         }
                                         Text(
                                             text = assistantAnswer,
@@ -291,14 +291,14 @@ fun OmnisSmartHelpDialog(
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
                                 item {
                                     HelpCard(
-                                        title = "⚡ Pro-Tips pro Operátory",
+                                        title = "⚡ Praktické tipy pro operátory",
                                         description = "• Používejte mikrofon pro rychlé hlasové diktování.\n• Přepínejte mezi kognitivními doménami kliknutím na horní filtr.\n• Pravidelně exportujte důležitá vlákna do Markdownu pro archivaci."
                                     )
                                 }
                                 item {
                                     HelpCard(
-                                        title = "🛡️ Bezpečnostní Invarianty",
-                                        description = "Systém striktně dodržuje RBAC oprávnění a chrání citlivá data operátorů lokální perzistencí bez neautorizovaného odesílání."
+                                        title = "🛡️ Bezpečnostní invarianty",
+                                        description = "Systém striktně dodržuje RBAC oprávnění a chrání citlivá data operátorů lokální šifrovanou perzistencí bez neautorizovaného odesílání."
                                     )
                                 }
                             }

@@ -52,7 +52,7 @@ object TensorCoherenceEvaluator {
         // 2. Relevance - sémantická shoda s dotazem operátora
         val relevanceScore = (cosSim * 100f).coerceIn(30f, 100f)
 
-        // 3. Konzistence - nízká entropie odpovedi a stabilita struktury
+        // 3. Konzistence - nízká entropie odpovědi a stabilita struktury
         val consistencyScore = ((1.0f - entropy.coerceIn(0f, 1f)) * 100f).coerceIn(50f, 98f)
 
         // 4. Hloubka (Depth) - délka a strukturovanost technického textu

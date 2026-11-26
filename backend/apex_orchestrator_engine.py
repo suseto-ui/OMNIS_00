@@ -148,7 +148,7 @@ class ApexOrchestratorEngineBackend:
             ApexStepSchema(step_number=1, step_name="Ontologická Recepce", summary="Extrahována data a entity dotazu bez emotivního šumu do interního scratchpadu."),
             ApexStepSchema(step_number=2, step_name="Paralelní Fúze (Lex/Tech/Econ)", summary="Spuštěna transdisciplinární dekonstrukce na prvočinitele."),
             ApexStepSchema(step_number=3, step_name="Adversariální Red-Teaming", summary="Komerční a právní prověrka. Rezonanční krystal ověřen."),
-            ApexStepSchema(step_number=4, step_name="Zero-Fluff Exekuce", summary="Vygenerován deterministický artefakt bez vaty.")
+            ApexStepSchema(step_number=4, step_name="Zero-Fluff Exekuce", summary="Vygenerován deterministický artefakt bez balastu.")
         ]
 
         if raw_response and raw_response.strip():

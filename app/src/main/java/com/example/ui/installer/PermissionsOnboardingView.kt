@@ -84,7 +84,7 @@ fun PermissionsOnboardingView(
             )
             Column {
                 Text(
-                    text = "PŘED-INSTALAČNÍ PRŮVODCE OPRÁVNĚNÍMI",
+                    text = "PRŮVODCE SYSTÉMOVÝMI OPRÁVNĚNÍMI",
                     color = Color.White,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,

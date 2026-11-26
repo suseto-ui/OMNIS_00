@@ -100,7 +100,7 @@ data class AkgeKernelSnapshot(
 /**
  * AKGE-8D Tenzorový Grafový Kernel (Agentic Knowledge Graph Engine)
  *
- * Implementuje optimalizovaný kognitivní kernel pro O.M.N.I.S. v4.2 / AKGE-8.
+ * Implementuje optimalizovaný kognitivní kernel pro O.M.N.I.S. v4.5 / AKGE-8D.
  * Poskytuje řídkou CSR maticovou reprezentaci vazeb mezi 8 doménami (SYS, ECON, PSYCH, ECO, LAW, SEC, PHYS, SOC),
  * difúzi tenzorového toku a deterministické kryptografické otisky stavu.
  */

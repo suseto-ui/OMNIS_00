@@ -177,8 +177,8 @@ object OmnisAuthService {
         _isAuthenticated.value = false
     }
 
-    suspend fun loginWithGoogle(context: Context, idToken: String): AuthResult {
-        val result = UserAuthService.instance.loginWithGoogle(idToken)
+    suspend fun loginWithGoogle(context: Context, idToken: String, firebaseUser: com.google.firebase.auth.FirebaseUser? = null): AuthResult {
+        val result = UserAuthService.instance.loginWithGoogle(idToken, firebaseUser)
         if (result is AuthResult.Success) {
             _currentSession.value = result.session
             _currentUserRole.value = result.session.role

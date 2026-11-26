@@ -146,7 +146,7 @@ async def sync_threads(
         await db.commit()
         return {
             "status": "success",
-            "message": f"Úspěšně synchronizováno {synced_count} nově vytvořených vláken z IndexedDB.",
+            "message": f"Úspěšně synchronizováno {synced_count} nově vytvořených vláken z lokální databáze Room.",
             "synced_count": synced_count,
         }
     except HTTPException:
@@ -154,7 +154,7 @@ async def sync_threads(
         raise
     except Exception as exc:
         await db.rollback()
-        logger.error("Chyba při asynchronní synchronizaci z IndexedDB: %s", exc)
+        logger.error("Chyba při asynchronní synchronizaci z lokální databáze Room: %s", exc)
         return {
             "status": "partial_success",
             "message": "Chyba synchronizace (uloženo lokálně).",

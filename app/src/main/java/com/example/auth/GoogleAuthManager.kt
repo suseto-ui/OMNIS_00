@@ -127,7 +127,7 @@ object GoogleAuthManager {
     fun signInWithGoogle(
         activity: Activity,
         scope: CoroutineScope,
-        onSuccess: (FirebaseUser) -> Unit = {},
+        onSuccess: (FirebaseUser, String) -> Unit = { _, _ -> },
         onError: (String) -> Unit = {}
     ) {
         val clientId = try {
@@ -163,7 +163,7 @@ object GoogleAuthManager {
                         if (com.example.BuildConfig.DEBUG) {
                             Log.i(TAG, "Přihlášení úspěšné (uid=${user.uid})")
                         }
-                        onSuccess(user)
+                        onSuccess(user, googleIdToken)
                     } else {
                         onError("Přihlášení se nezdařilo: prázdný uživatel")
                     }

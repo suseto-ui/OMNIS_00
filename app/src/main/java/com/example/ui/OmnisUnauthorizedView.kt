@@ -65,7 +65,7 @@ fun OmnisUnauthorizedView(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Běžní uživatelé mají plný přístup ke Kognitivnímu Chatu, Analytickému Přehledu a Paměti.",
+                    text = "Běžní uživatelé mají plný přístup ke kognitivnímu chatu, analytickému přehledu a paměti.",
                     color = OmnisTextMuted,
                     fontSize = 11.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -78,7 +78,7 @@ fun OmnisUnauthorizedView(
                 ) {
                     Icon(Icons.Default.Shield, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Návrat do Kognitivního Chatu", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("Návrat do kognitivního chatu", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }

@@ -44,7 +44,7 @@ fun AiDisclosureDialog(
         icon = {
             Icon(
                 imageVector = Icons.Default.Info,
-                contentDescription = "AI Transparency Icon",
+                contentDescription = "Ikona upozornění na AI",
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(36.dp)
             )
@@ -61,7 +61,7 @@ fun AiDisclosureDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "V souladu s Nařízením Evropského parlamentu a Rady o umělé inteligenci (EU AI Act) Vás informujeme, že v tomto komunikačním rozhraní interagujete s algoritmickým kognitivním systémem (AI Bot), nikoliv s lidským operátorem.",
+                    text = "V souladu s Nařízením Evropského parlamentu a Rady o umělé inteligenci (EU AI Act) vás informujeme, že v tomto komunikačním rozhraní interagujete s algoritmickým kognitivním systémem (AI asistentem), nikoliv s lidským operátorem.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

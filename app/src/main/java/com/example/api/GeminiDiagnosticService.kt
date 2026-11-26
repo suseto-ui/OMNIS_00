@@ -150,7 +150,7 @@ object GeminiDiagnosticService {
                     "BuildConfig obsahuje výchozí zástupný text 'YOUR_GEMINI_API_KEY'."
                 else
                     "V proměnné BuildConfig.GEMINI_API_KEY je prázdná hodnota.",
-                quotaState = "Není k dispozici (Offline fallback)",
+                quotaState = "Není k dispozici (offline záložní režim)",
                 discoveredModels = emptyList(),
                 recommendation = "Přejděte do AI Studio -> Secrets -> vložte GEMINI_API_KEY (Slot 1), GEMINI_API_KEY_2 (Slot 2) a GEMINI_API_KEY_3 (Slot 3).",
                 rawResponseSnippet = null,

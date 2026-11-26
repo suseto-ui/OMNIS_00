@@ -70,9 +70,9 @@ private val KYBER_TOUR_STEPS = listOf(
     ),
     TourStep(
         stepIndex = 5,
-        title = "Auditní Řetězec & Odolnost",
+        title = "Auditní řetězec a odolnost",
         tag = "ZK LEDGER & CIRCUIT BREAKER",
-        description = "Každá brána G1–G6 i operace zapisují neměnný auditní otisk. Při HTTP 429 nebo výpadku API přebírá provoz adaptivní Circuit Breaker s řízeným cooldownem a bezpečným fallbackem.",
+        description = "Každá brána G1–G6 i operace zapisují neměnný auditní otisk. Při HTTP 429 nebo výpadku API přebírá provoz adaptivní Circuit Breaker s řízeným cooldownem a bezpečným záložním režimem.",
         technicalNote = "HMAC-SHA256 Hash-Chain • Room v19 SQLCipher • Retry-After [5–300 s]",
         iconEmoji = "🛡️"
     )
@@ -138,7 +138,7 @@ fun CyberTourOverlay(
 
                         Column {
                             Text(
-                                text = "PROTOKOL ONBOARDING [${currentStep + 1}/${KYBER_TOUR_STEPS.size}]",
+                                text = "PRŮVODCE SYSTÉMEM [${currentStep + 1}/${KYBER_TOUR_STEPS.size}]",
                                 color = OmnisCyan,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,

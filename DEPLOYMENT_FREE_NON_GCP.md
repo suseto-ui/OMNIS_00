@@ -10,9 +10,9 @@ Tento manuál obsahuje všechny kroky vyžadující lidskou interakci (registrac
 | :--- | :--- | :--- | :--- |
 | **Cloud Server & DB** | Google Cloud SQL + Cloud Run | **Oracle Cloud Always Free ARM Ampere A1** (2 OCPU, 12 GB RAM, 100–200 GB disk) + **PostgreSQL 17 (`pgvector` + `Apache AGE` + `pgcrypto`)** | **100% připraveno** (`docker-compose.yml` služba `db`, sjednocený `backend/main.py`) · [oracle.com/europe/cloud/free](https://www.oracle.com/europe/cloud/free/) |
 | **Realtime Sync** | Firebase Firestore | **ElectricSQL 1.8.1** (self-hosted nad PostgreSQL WAL) + **Room v19 SQLCipher AES-256** | **100% připraveno** (`omnis_electric` + `omnis_sync_outbox`) · [electric-sql.com](https://electric-sql.com/) |
-| **Doména & HTTPS** | Cloud Load Balancer / Managed SSL | **DuckDNS** (zdarma subdoména) + **Caddy 2** (automatický Let's Encrypt TLS přes HTTP-01/TLS-ALPN-01) | **100% připraveno** (`Caddyfile`) · [duckdns.org](https://www.duckdns.org/) |
+| **Doména & HTTPS** | Cloud Load Balancer / Managed SSL | **DuckDNS** (zdarma subdoména) + **Caddy 2** (automatický Let's Encrypt TLS přes HTTP-01/TLS-ALPN-01) | **100% připraveno** (`Caddyfile` s výchozím `omnis.duckdns.org` přepsatelným přes `DOMAIN_NAME`) · [duckdns.org](https://www.duckdns.org/) |
 | **Serverová LLM Kaskáda** | Placené Gemini / Vertex AI | **Ollama (`gemma4:e4b`)** -> **GroqCloud Free Tier** -> **Google AI Studio Free Tier** -> **OpenRouter `:free`** | **100% připraveno** (`backend/app/llm_cascade.py`) · [aistudio.google.com](https://aistudio.google.com/) / [console.groq.com](https://console.groq.com/) / [openrouter.ai](https://openrouter.ai/) |
-| **Android Client Auth & URL** | Cloud Run URL & Firebase Auth | **Sovereign server přes `-POMNIS_BACKEND_URL`** + volitelně Google Sign-In (`CredentialManager`) nebo OMNIS JWT (`/api/auth/login`) | **100% připraveno** (`app/build.gradle.kts` výchozí fallback míří na `https://omnis-apex-core.duckdns.org`, Room Outbox -> PostgreSQL 17 Gateway) |
+| **Android Client Auth & URL** | Cloud Run URL & Firebase Auth | **Sovereign server přes `-POMNIS_BACKEND_URL`** + volitelně Google Sign-In (`CredentialManager`) nebo OMNIS JWT (`/api/auth/login`) | **100% připraveno** (`app/build.gradle.kts` výchozí adresa míří na `https://omnis-apex-core.duckdns.org`, Room Outbox -> PostgreSQL 17 Gateway) |
 | **CI/CD & Analýza** | Google Cloud Build + SonarQube Paid | **GitHub Actions** (`production-ci-cd.yml`, `omnis-ci.yml`, `omnis-zero-cost-ci.yml`) + **SonarQube Cloud Free** | **100% připraveno** · [sonarcloud.io](https://sonarcloud.io/) |
 
 ---
@@ -137,13 +137,13 @@ sudo chown -R "$USER":"$USER" /opt/omnis
 git clone https://github.com/suseto-ui/OMNIS.git /opt/omnis
 ```
 
-*(Pokud používáte vlastní fork nebo repozitář `OMNIS_00`, upravte URL v `git clone`.)* Odhlaste se (`exit`) a znovu se přihlaste přes SSH, aby se aktivovalo členství ve skupině `docker`.
+*(Pokud používáte vlastní fork repozitáře, upravte URL v `git clone`.)* Odhlaste se (`exit`) a znovu se přihlaste přes SSH, aby se aktivovalo členství ve skupině `docker`.
 
 ---
 
-## Krok 7: Konfigurace `.env` a Spuštění Stacku na Serveru
+## Krok 7: Konfigurace `.env` a spuštění stacku na serveru
 
-Na OCI serveru v `/opt/omnis` vygenerujte `.env` přesně podle proměnných vyžadovaných soubory `docker-compose.yml`, `backend/config.py` a `Caddyfile`:
+Na OCI serveru v `/opt/omnis` vygenerujte `.env` podle proměnných vyžadovaných soubory `docker-compose.yml`, `backend/config.py` a `Caddyfile`:
 
 ```bash
 #!/usr/bin/env bash
@@ -275,7 +275,7 @@ V repozitáři na GitHubu otevřete **Settings -> Secrets and variables -> Actio
 
 ---
 
-## Krok 9: Propojení a Kompilace Android Klienta (Kotlin 2.0)
+## Krok 9: Propojení a kompilace Android klienta (Kotlin 2.0)
 
 Soubor `app/build.gradle.kts` čte cílovou adresu serveru z Gradle property `-POMNIS_BACKEND_URL` nebo proměnné prostředí `OMNIS_BACKEND_URL` (nikoli z `local.properties`).
 
@@ -287,9 +287,9 @@ gradle :app:assembleDebug -POMNIS_BACKEND_URL=https://omnis-apex-core.duckdns.or
 gradle :app:bundleRelease -POMNIS_BACKEND_URL=https://omnis-apex-core.duckdns.org --no-daemon
 ```
 
-Hotový APK balíček najdete v `app/build/outputs/apk/debug/app-debug.apk`. Po registraci nebo přihlášení e-mailem `susetofu@gmail.com` v aplikaci získáte automaticky roli `ADMIN_OPERATOR`.
+Hotový APK balíček najdete v `app/build/outputs/apk/debug/app-debug.apk`. Heslová registrace (`POST /api/auth/register`) pro hlavní administrátorský e-mail `susetofu@gmail.com` je z bezpečnostních důvodů blokována (HTTP 403); automatická elevace na roli `ADMIN_OPERATOR` probíhá výhradně po ověřeném přihlášení přes Google Sign-In (`POST /api/auth/google` s `email_verified: true`).
 
 ### Poznámka k úplnému opuštění Firebase na straně Androidu
-- Serverový stack (`PostgreSQL 17 + ElectricSQL + FastAPI + Caddy`) už běží **100% mimo Google Cloud**.
-- Na straně Android aplikace zatím zůstává `app/google-services.json` pro Google Sign-In (`GoogleAuthManager.kt`) a klientskou AI (`FirebaseAiService.kt`), zatímco synchronizace zpráv a telemetrie jde přes `OmnisSyncRepository` / `OmnisBatchSyncWorker` na `BuildConfig.OMNIS_BACKEND_URL`.
+- Serverový stack (`PostgreSQL 17 + ElectricSQL + FastAPI + Caddy`) již běží **100 % mimo Google Cloud**.
+- Na straně Android aplikace zatím zůstává `app/google-services.json` pro Google Sign-In (`GoogleAuthManager.kt`) a klientskou AI (`FirebaseAiService.kt`), zatímco synchronizace zpráv a telemetrie míří přes `OmnisSyncRepository` a `OmnisBatchSyncWorker` na `BuildConfig.OMNIS_BACKEND_URL`.
 - Pokud byste chtěli odstranit i Google Sign-In na Androidu, používejte přímo OMNIS přihlášení (`POST /api/auth/register` a `POST /api/auth/login` v `UserAuthService.kt`).

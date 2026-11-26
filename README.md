@@ -4,7 +4,7 @@
 
 ---
 
-## 🏗️ 1. Celková Architektura Systému & APEX Master Pipeline
+## 🏗️ 1. Celková architektura systému a APEX Master Pipeline
 
 ```mermaid
 graph TD
@@ -56,7 +56,7 @@ graph TD
 
 ---
 
-## 🌟 2. Klíčové Schopnosti a 8D Tenzorové Jádro
+## 🌟 2. Klíčové schopnosti a 8D tenzorové jádro
 
 ### 🧩 8D Funkční Matice a 28-Párový Tenzor Vazeb
 Každý kognitivní podnět i systémový stav je deterministicky hodnocen napříč 8 fundamentálními dimenzemi:
@@ -93,7 +93,7 @@ Všech $\binom{8}{2} = 28$ interakcí mezi doménami je kvantifikováno empirick
 
 ---
 
-## 🛡️ 3. Dual-Gate & Logická Vrstva Gatekeeper G1–G6 (Zero-Hallucination)
+## 🛡️ 3. Dual-Gate a logická vrstva Gatekeeper G1–G6 (Zero-Hallucination)
 
 Každý dotaz (vstupní větev) i vygenerovaná odpověď před vstupem do 8D Matice dopadu (výstupní větev — **Dual-Gate**) v systému O.M.N.I.S. povinně prochází sekvenční logickou vrstvou **`Gatekeeper G1–G6`** (`GatekeeperG1G6.kt` na Androidu a `backend/gateway/gatekeeper.py` na backendu):
 
@@ -120,7 +120,7 @@ Každá ze 6 bran povinně zapisuje svou operaci do auditního systému (`Teleme
 
 ---
 
-## 👥 4. Prezentační Úrovně a Role-Based Access Control (RBAC)
+## 👥 4. Prezentační úrovně a řízení přístupu podle rolí (RBAC)
 
 ```mermaid
 stateDiagram-v2
@@ -148,21 +148,21 @@ stateDiagram-v2
 
 ---
 
-## 🏛️ 5. Architektonické Vrstvy a Technologie
+## 🏛️ 5. Architektonické vrstvy a technologie
 
 | Vrstva | Technologie | Popis |
 | :--- | :--- | :--- |
-| **Presentation (UI)** | Jetpack Compose (M3) | 8D Canvas Radar, Octagon Dashboard, Timeline Chat (`ChatStatusBanner`), Multi-Agentní Debata, Tensor Oversight, Admin Hub |
+| **Presentation (UI)** | Jetpack Compose (M3) | 8D Canvas Radar, Octagon Dashboard, Timeline Chat (`ChatStatusBanner`), Multi-Agentní Debata, Tensor Oversight, Admin Hub, `SyncLogScreen` |
 | **Domain & Gatekeeper** | Kotlin 2.0 Coroutines | `ApexOrchestratorEngine`, `OmnisFivePhaseExecutor`, `GatekeeperG1G6` (`GatekeeperChainException`), `OmnisCircuitBreaker` (HTTP 429 `Retry-After`), `AkgeTensorKernel` |
 | **Backend & Graph** | Python FastAPI / Apache AGE | `GatekeeperG1G6` (`backend/gateway/gatekeeper.py`), `AgeCausalGraphRepository`, `CsrKnowledgeGraph`, `ProviderCircuitBreaker`, `Q_omnis` validátor, `ZkAuditLedgerService` |
 | **Persistence (Edge)** | Room DB v19 & SQLCipher | Offline-first AES-256-CBC šifrovaná paměť (`omnis_local_vectors_64d`, `MIGRATION_18_19`) s Android Keystore a Transactional Outbox (`omnis_sync_outbox`) |
 | **Persistence (Core)** | PostgreSQL 17 + `pgvector` + `pgcrypto` | 64D HNSW index (`rag_memory_64d`), RLS politiky, least-privilege role (`omnis_app_rw`, `omnis_audit_append`, `omnis_sync_repl`), append-only triggery |
-| **Sync & Cascade** | ElectricSQL 1.8.1 + LLM Cascade | Logická replikace `electric_publication_default` (`REPLICA IDENTITY FULL`), Android Firebase AI Logic & serverová kaskáda (`gemma4_local` -> Groq -> Gemini -> OpenRouter) |
+| **Sync & Cascade** | ElectricSQL 1.8.1 + LLM Cascade | Logická replikace `electric_publication_default` (`REPLICA IDENTITY FULL`), `OmnisBatchSyncWorker` (`SyncLogManager`), Android Firebase AI Logic a serverová kaskáda (`gemma4_local` -> Groq -> Gemini -> OpenRouter) |
 | **Vault Index** | `_OMNIS_VAULT/` | Kompletní topologický a forenzní index (`00_OMNIS_MASTER_INDEX.md`, `00_TOPOLOGY_GRAPH.json`) ověřovaný SHA-256 kontrolními součty |
 
 ---
 
-## 🚀 6. Příkazy pro Sestavení a Verifikaci (CI/CD: `production-ci-cd.yml`)
+## 🚀 6. Příkazy pro sestavení a verifikaci (CI/CD: `production-ci-cd.yml`)
 
 ```bash
 # 1. Kontrola syntaxe a Integrity Gate (init.sql, docker-compose.yml, _OMNIS_VAULT SHA-256, unittest)
@@ -184,16 +184,16 @@ docker compose up -d --build
 
 ---
 
-## 📦 7. Poznámky k Vydání `v4.5.0-GA`
+## 📦 7. Poznámky k vydání `v4.5.0-GA`
 
-- **CI/CD & Provenance:** Sjednocený workflow `.github/workflows/production-ci-cd.yml` (Detekt, `pytest` s pokrytím ≥ 80 %, `ruff`, `bandit`, `radon`, Android `:app:testDebugUnitTest`, R8 release APK/AAB a automatické vystavení `SIGNING_STATUS.txt` se stavem `SIGNED` nebo `UNSIGNED_R8_ONLY` + `SHA256SUMS.txt`).
-- **Sjednocená Perzistence:** PostgreSQL 17 (`pgvector`, `Apache AGE`, `pgcrypto`), `ElectricSQL 1.8.1`, Android Room **v19** + SQLCipher AES-256 s lokálním 64D vektorovým úložištěm (`omnis_local_vectors_64d`, `MIGRATION_18_19`).
-- **Kognitivní Jádro, Gatekeeper G1–G6 & Circuit Breaker:** Sekvenční vrstva `Gatekeeper G1–G6` před 8D maticí dopadů (s auditním logováním každé brány a `GatekeeperChainException` při `NaN`/`Inf`/nulových vektorech), Dual-Gate na vstupu i výstupu, jednotný HTTP 429 `Retry-After` cooldown `[5, 300]` s v `OmnisCircuitBreaker` / `ProviderCircuitBreaker` s přehledem v `ChatStatusBanner`, konstantně-časová verifikace `zk_audit_ledger` a striktní RBAC izolace.
+- **CI/CD a provenience:** Sjednocený workflow `.github/workflows/production-ci-cd.yml` (Detekt, `pytest` s pokrytím ≥ 80 %, `ruff`, `bandit`, `radon`, Android `:app:testDebugUnitTest`, R8 release APK/AAB a automatické vystavení `SIGNING_STATUS.txt` se stavem `SIGNED` nebo `UNSIGNED_R8_ONLY` + `SHA256SUMS.txt`).
+- **Sjednocená perzistence:** PostgreSQL 17 (`pgvector`, `Apache AGE`, `pgcrypto`), `ElectricSQL 1.8.1`, Android Room **v19** + SQLCipher AES-256 s lokálním 64D vektorovým úložištěm (`omnis_local_vectors_64d`, `MIGRATION_18_19`) a diagnostikou synchronizace (`SyncLogScreen`).
+- **Kognitivní jádro, Gatekeeper G1–G6 a Circuit Breaker:** Sekvenční vrstva `Gatekeeper G1–G6` před 8D maticí dopadů (s auditním logováním každé brány a `GatekeeperChainException` při `NaN`/`Inf`/nulových vektorech), Dual-Gate na vstupu i výstupu, jednotný HTTP 429 `Retry-After` cooldown `[5, 300]` s v `OmnisCircuitBreaker` a `ProviderCircuitBreaker` s přehledem v `ChatStatusBanner`, verifikace `zk_audit_ledger` v konstantním čase a striktní RBAC izolace.
 - **Android Production Release:** `versionCode = 450`, `versionName = 4.5.0`, R8 minifikace a shrink resources (`proguard-rules.pro`) a environmentální podpis (`OMNIS_KEYSTORE_FILE` / GitHub Secret `OMNIS_KEYSTORE_BASE64`).
 
 ---
 
-## 📤 8. Příprava a Nahrání na GitHub
+## 📤 8. Příprava a nahrání na GitHub
 
 Repozitář neobsahuje `.env`, `local.properties` ani soukromé API klíče (`.gitignore` vylučuje lokální keystore, databáze, cache i `release-artifacts/` / `release-v*/`). Pro první nahrání na GitHub a spuštění CI/CD:
 

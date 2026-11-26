@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.auth.OmnisAuthService
+import com.example.auth.GoogleAuthManager
 import com.example.auth.UserRole
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
@@ -496,54 +497,41 @@ fun OmnisLoginScreen(
                 // Google Login Button
                 OutlinedButton(
                     onClick = {
-                        coroutineScope.launch {
-                            isLoading = true
-                            errorMessage = null
-                            successMessage = null
-                            try {
-                                val clientId = context.getString(R.string.default_web_client_id)
-                                val credentialManager = CredentialManager.create(context)
-                                val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
-                                val request = GetCredentialRequest.Builder()
-                                    .addCredentialOption(signInOption)
-                                    .build()
+                        val activity = context.findActivity()
+                        if (activity == null) {
+                            errorMessage = "Chyba aktivního okna pro Google přihlášení."
+                            return@OutlinedButton
+                        }
+                        isLoading = true
+                        errorMessage = null
+                        successMessage = null
 
-                                val result = credentialManager.getCredential(context, request)
-                                val credential = result.credential
-
-                                if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                                    val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
-                                    val authCredential = com.google.firebase.auth.GoogleAuthProvider.getCredential(googleIdToken, null)
-                                    val authResult = com.google.firebase.Firebase.auth.signInWithCredential(authCredential).await()
-
-                                    val firebaseUser = authResult.user
-                                    if (firebaseUser != null) {
-                                        when (val backendResult = OmnisAuthService.loginWithGoogle(context, googleIdToken)) {
-                                            is com.example.auth.AuthResult.Success -> onLoginSuccess()
-                                            is com.example.auth.AuthResult.PendingApproval -> {
-                                                pendingApprovalInfo = PendingApprovalInfo(
-                                                    username = firebaseUser.displayName.orEmpty(),
-                                                    email = firebaseUser.email.orEmpty(),
-                                                    message = backendResult.message
-                                                )
-                                            }
-                                            is com.example.auth.AuthResult.Failure -> {
-                                                errorMessage = backendResult.reason
-                                            }
+                        GoogleAuthManager.signInWithGoogle(
+                            activity = activity,
+                            scope = coroutineScope,
+                            onSuccess = { firebaseUser, googleIdToken ->
+                                coroutineScope.launch {
+                                    when (val backendResult = OmnisAuthService.loginWithGoogle(context, googleIdToken, firebaseUser)) {
+                                        is com.example.auth.AuthResult.Success -> onLoginSuccess()
+                                        is com.example.auth.AuthResult.PendingApproval -> {
+                                            pendingApprovalInfo = PendingApprovalInfo(
+                                                username = firebaseUser.displayName.orEmpty().ifBlank { firebaseUser.email.orEmpty() },
+                                                email = firebaseUser.email.orEmpty(),
+                                                message = backendResult.message
+                                            )
                                         }
-                                    } else {
-                                        errorMessage = "Firebase autentizace selhala."
+                                        is com.example.auth.AuthResult.Failure -> {
+                                            errorMessage = backendResult.reason
+                                        }
                                     }
-                                } else {
-                                    errorMessage = "Neočekávaný typ přihlašovacích údajů."
+                                    isLoading = false
                                 }
-                            } catch (e: Exception) {
-                                val msg = e.localizedMessage ?: "Neznámá chyba"
-                                errorMessage = "Google přihlášení selhalo: $msg"
-                            } finally {
+                            },
+                            onError = { err ->
+                                errorMessage = err
                                 isLoading = false
                             }
-                        }
+                        )
                     },
                     modifier = Modifier.fillMaxWidth().height(48.dp).testTag("google_signin_button"),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
@@ -556,4 +544,13 @@ fun OmnisLoginScreen(
             }
         }
     }
+}
+
+private fun android.content.Context.findActivity(): android.app.Activity? {
+    var context = this
+    while (context is android.content.ContextWrapper) {
+        if (context is android.app.Activity) return context
+        context = context.baseContext
+    }
+    return null
 }
