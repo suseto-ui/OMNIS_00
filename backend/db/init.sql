@@ -25,10 +25,14 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'omnis_sync_repl') THEN
         CREATE ROLE omnis_sync_repl WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE REPLICATION;
     END IF;
+    EXECUTE format('GRANT CREATE ON DATABASE %I TO omnis_sync_repl', current_database());
 END
 $$;
 
+GRANT CREATE, USAGE ON SCHEMA public TO omnis_app_rw, omnis_sync_repl;
+
 SET search_path = public, ag_catalog;
+
 
 -- ==============================================================================
 -- 2. 64D Vector RAG Memory (pgvector + HNSW Cosine Index)
@@ -427,13 +431,15 @@ BEGIN
         CREATE PUBLICATION electric_publication_default
             FOR TABLE public.messages, public.goals, public.rag_fragments, public.tensor_states_8d;
     END IF;
+    ALTER PUBLICATION electric_publication_default OWNER TO omnis_sync_repl;
 END
 $$;
 
 -- ==============================================================================
 -- 8. Explicit Role Grants (Principle of Least Privilege)
 -- ==============================================================================
-GRANT USAGE ON SCHEMA public TO omnis_app_rw, omnis_audit_append, omnis_sync_repl;
+GRANT USAGE, CREATE ON SCHEMA public TO omnis_app_rw, omnis_sync_repl;
+GRANT USAGE ON SCHEMA public TO omnis_audit_append;
 GRANT USAGE ON SCHEMA ag_catalog TO omnis_app_rw;
 GRANT USAGE ON SCHEMA omnis_causal_graph TO omnis_app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA omnis_causal_graph TO omnis_app_rw;
@@ -445,4 +451,6 @@ GRANT SELECT ON public.zk_audit_ledger TO omnis_app_rw;
 GRANT INSERT, SELECT ON public.zk_audit_ledger TO omnis_audit_append;
 GRANT USAGE, SELECT ON SEQUENCE public.zk_audit_ledger_seq_id_seq TO omnis_audit_append;
 
-GRANT SELECT ON public.messages, public.goals, public.rag_fragments, public.tensor_states_8d TO omnis_sync_repl;
+GRANT ALL ON TABLE public.messages, public.goals, public.rag_fragments, public.tensor_states_8d TO omnis_sync_repl;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO omnis_app_rw, omnis_sync_repl;
+

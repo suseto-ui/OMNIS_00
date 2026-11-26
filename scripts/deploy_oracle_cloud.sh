@@ -48,7 +48,26 @@ docker compose down --remove-orphans || true
 docker compose build --pull
 docker compose up -d --remove-orphans
 
+# 4b. Explicitní idempotentní inicializace schématu a publikace (pro případ existujících volume pg17_data)
+echo "Ověřuji inicializaci PostgreSQL 17 schématu, rolí a ElectricSQL publikace..."
+for i in {1..30}; do
+    if docker compose exec -T db pg_isready -U postgres -d omnis_db >/dev/null 2>&1; then
+        echo "PostgreSQL 17 odpovídá, aplikuji případné chybějící prvky schématu a publikace..."
+        docker compose exec -T db psql -U postgres -d omnis_db -f /docker-entrypoint-initdb.d/01-init.sql >/dev/null 2>&1 || true
+        docker compose exec -T db bash /docker-entrypoint-initdb.d/02-apply-role-passwords.sh >/dev/null 2>&1 || true
+        break
+    fi
+    sleep 2
+done
+
+# Restart ElectricSQL pokud byl v počáteční smyčce před vytvořením publikace
+if docker compose ps electric 2>/dev/null | grep -qiE "restarting|unhealthy"; then
+    echo "Restartuji ElectricSQL po synchronizaci publikace..."
+    docker compose restart electric
+fi
+
 # 5. Kontrola stavu služeb (Healthchecks)
+
 echo "Ověřuji health status kontejnerů..."
 for i in {1..30}; do
     if docker compose ps | grep -q "healthy"; then

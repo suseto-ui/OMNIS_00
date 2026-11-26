@@ -31,3 +31,10 @@ RUN git clone --depth 1 --branch "${AGE_VERSION}" https://github.com/apache/age.
 
 RUN apt-get purge -y --auto-remove build-essential git bison flex postgresql-server-dev-17 \
     && rm -rf /var/lib/apt/lists/*
+
+COPY backend/db/entrypoint.sh /usr/local/bin/omnis-entrypoint.sh
+RUN chmod +x /usr/local/bin/omnis-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/omnis-entrypoint.sh"]
+CMD ["postgres"]
+
