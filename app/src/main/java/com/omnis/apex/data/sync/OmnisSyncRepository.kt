@@ -6,10 +6,7 @@ import com.example.BuildConfig
 import com.example.auth.OmnisAuthService
 import com.example.data.DatabaseConfig
 import com.example.data.OmnisDatabase
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -35,12 +32,8 @@ class OmnisSyncRepository(private val context: Context) {
             .build()
     }
 
-    private suspend fun resolveBearerToken(): String? {
-        val omnisToken = OmnisAuthService.currentSession.value?.token?.takeIf { it.isNotBlank() }
-        if (omnisToken != null) return omnisToken
-        return runCatching {
-            Firebase.auth.currentUser?.getIdToken(false)?.await()?.token
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+    private fun resolveBearerToken(): String? {
+        return OmnisAuthService.currentSession.value?.token?.takeIf { it.isNotBlank() }
     }
 
     suspend fun pingSovereignBackend(): Boolean = withContext(Dispatchers.IO) {

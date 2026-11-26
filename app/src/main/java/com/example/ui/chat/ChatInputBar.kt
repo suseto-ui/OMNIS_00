@@ -57,9 +57,11 @@ fun ChatInputBar(
     isLoading: Boolean,
     isOcrLoading: Boolean,
     isListening: Boolean = false,
+    hasStagedAttachment: Boolean = false,
     onOpenModules: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val canSend = (inputQuery.isNotBlank() || hasStagedAttachment) && !isLoading && !isOcrLoading
     val haptic = LocalHapticFeedback.current
 
     // Pre-flight analýza vágnosti vstupu v reálném čase
@@ -246,7 +248,7 @@ fun ChatInputBar(
                         ),
                         keyboardActions = KeyboardActions(
                             onSend = {
-                                if (inputQuery.isNotBlank() && !isLoading && !isOcrLoading) {
+                                if (canSend) {
                                     onSend()
                                 }
                             }
@@ -285,16 +287,16 @@ fun ChatInputBar(
 
                 IconButton(
                     onClick = {
-                        if (inputQuery.isNotBlank() && !isLoading && !isOcrLoading) {
+                        if (canSend) {
                             onSend()
                         }
                     },
-                    enabled = inputQuery.isNotBlank() && !isLoading && !isOcrLoading,
+                    enabled = canSend,
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(
-                            if (inputQuery.isNotBlank() && !isLoading && !isOcrLoading)
+                            if (canSend)
                                 OmnisStyleSheet.Colors.CyanAccent
                             else
                                 OmnisStyleSheet.Colors.BorderMuted
@@ -304,7 +306,7 @@ fun ChatInputBar(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
                         contentDescription = "Odeslat dotaz",
-                        tint = if (inputQuery.isNotBlank() && !isLoading && !isOcrLoading)
+                        tint = if (canSend)
                             Color.Black
                         else
                             OmnisStyleSheet.Colors.TextMuted,

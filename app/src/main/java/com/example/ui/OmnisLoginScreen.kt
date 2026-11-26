@@ -37,16 +37,6 @@ import com.example.auth.GoogleAuthManager
 import com.example.auth.UserRole
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
-import androidx.credentials.CredentialManager
-import androidx.credentials.GetCredentialRequest
-import androidx.credentials.CustomCredential
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-import com.example.R
-import kotlinx.coroutines.tasks.await
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
 
 /**
  * Vstupní přihlašovací rozhraní O.M.N.I.S. s podporou předvyplnění testovacích účtů,
@@ -509,14 +499,14 @@ fun OmnisLoginScreen(
                         GoogleAuthManager.signInWithGoogle(
                             activity = activity,
                             scope = coroutineScope,
-                            onSuccess = { firebaseUser, googleIdToken ->
+                            onSuccess = { googleAccount, googleIdToken ->
                                 coroutineScope.launch {
-                                    when (val backendResult = OmnisAuthService.loginWithGoogle(context, googleIdToken, firebaseUser)) {
+                                    when (val backendResult = OmnisAuthService.loginWithGoogle(context, googleIdToken, googleAccount)) {
                                         is com.example.auth.AuthResult.Success -> onLoginSuccess()
                                         is com.example.auth.AuthResult.PendingApproval -> {
                                             pendingApprovalInfo = PendingApprovalInfo(
-                                                username = firebaseUser.displayName.orEmpty().ifBlank { firebaseUser.email.orEmpty() },
-                                                email = firebaseUser.email.orEmpty(),
+                                                username = googleAccount.displayName.orEmpty().ifBlank { googleAccount.email.orEmpty() },
+                                                email = googleAccount.email.orEmpty(),
                                                 message = backendResult.message
                                             )
                                         }
@@ -529,6 +519,9 @@ fun OmnisLoginScreen(
                             },
                             onError = { err ->
                                 errorMessage = err
+                                isLoading = false
+                            },
+                            onCancel = {
                                 isLoading = false
                             }
                         )

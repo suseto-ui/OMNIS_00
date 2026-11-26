@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">OMNIS by Suseto</string>
+    <string name="default_web_client_id" translatable="false">1093249948100-266llenfbo9gosr4qqgmlvkleh9cq0et.apps.googleusercontent.com</string>
 </resources>

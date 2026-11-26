@@ -5,14 +5,10 @@ import com.example.auth.OmnisAuthService
 import com.example.data.DatabaseConfig
 import com.example.data.OmnisRecord
 import com.example.data.OmnisSyncOutboxEntity
-import com.google.firebase.Firebase
-import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.auth.auth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import okhttp3.MediaType.Companion.toMediaType
@@ -55,18 +51,8 @@ object OmnisApiGatewayClient {
 
     private var isCircuitBreakerOpen = false
 
-    private suspend fun resolveBearerToken(): String? {
-        val omnisToken = OmnisAuthService.currentSession.value?.token?.takeIf { it.isNotBlank() }
-        if (omnisToken != null) return omnisToken
-        return runCatching {
-            Firebase.auth.currentUser?.getIdToken(false)?.await()?.token
-        }.getOrNull()?.takeIf { it.isNotBlank() }
-    }
-
-    private suspend fun resolveAppCheckToken(): String? {
-        return runCatching {
-            FirebaseAppCheck.getInstance().getAppCheckToken(false).await().token
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+    private fun resolveBearerToken(): String? {
+        return OmnisAuthService.currentSession.value?.token?.takeIf { it.isNotBlank() }
     }
 
     private fun resolveSyncApiKey(): String? {
@@ -88,7 +74,6 @@ object OmnisApiGatewayClient {
                 .url("$GATEWAY_BASE_URL/api/v1/health")
                 .header("User-Agent", "OMNIS-by-Suseto-Android/4.5")
                 .get()
-            resolveAppCheckToken()?.let { reqBuilder.header("X-Firebase-AppCheck", it) }
 
             httpClient.newCall(reqBuilder.build()).execute().use { response ->
                 val latency = System.currentTimeMillis() - startTime
@@ -132,7 +117,6 @@ object OmnisApiGatewayClient {
                 .header("User-Agent", "OMNIS-by-Suseto-Android/4.5")
                 .get()
             resolveBearerToken()?.let { shapeReqBuilder.header("Authorization", "Bearer $it") }
-            resolveAppCheckToken()?.let { shapeReqBuilder.header("X-Firebase-AppCheck", it) }
 
             httpClient.newCall(shapeReqBuilder.build()).execute().use { shapeResp ->
                 val rawBody = shapeResp.body?.bytes()
@@ -154,7 +138,6 @@ object OmnisApiGatewayClient {
                 .url("$GATEWAY_BASE_URL/api/v1/health")
                 .header("User-Agent", "OMNIS-by-Suseto-Android/4.5")
                 .get()
-            resolveAppCheckToken()?.let { healthReq.header("X-Firebase-AppCheck", it) }
 
             httpClient.newCall(healthReq.build()).execute().use { healthResp ->
                 val byteCount = healthResp.body?.bytes()?.size?.toLong() ?: 0L
@@ -197,7 +180,6 @@ object OmnisApiGatewayClient {
         val opStartMs = System.currentTimeMillis()
         var syncedTotal = 0
         val bearer = resolveBearerToken()
-        val appCheckToken = resolveAppCheckToken()
         val syncApiKey = resolveSyncApiKey()
 
         try {
@@ -229,7 +211,6 @@ object OmnisApiGatewayClient {
                     .post(body)
                 bearer?.let { reqBuilder.header("Authorization", "Bearer $it") }
                 syncApiKey?.let { reqBuilder.header("X-OMNIS-API-KEY", it) }
-                appCheckToken?.let { reqBuilder.header("X-Firebase-AppCheck", it) }
 
                 httpClient.newCall(reqBuilder.build()).execute().use { response ->
                     if (response.isSuccessful) {
@@ -271,7 +252,6 @@ object OmnisApiGatewayClient {
         val opStartMs = System.currentTimeMillis()
         var syncedTotal = 0
         val token = resolveBearerToken()
-        val appCheckToken = resolveAppCheckToken()
         val syncApiKey = resolveSyncApiKey()
 
         try {
@@ -328,9 +308,6 @@ object OmnisApiGatewayClient {
                 }
                 if (!syncApiKey.isNullOrBlank()) {
                     reqBuilder.header("X-OMNIS-API-KEY", syncApiKey)
-                }
-                if (!appCheckToken.isNullOrBlank()) {
-                    reqBuilder.header("X-Firebase-AppCheck", appCheckToken)
                 }
 
                 httpClient.newCall(reqBuilder.build()).execute().use { response ->

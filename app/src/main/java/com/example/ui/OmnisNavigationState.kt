@@ -29,7 +29,8 @@ enum class OmnisTab {
     REPUTATION,
     APEX_DASHBOARD,
     MULTI_AGENT_DEBATE,
-    SYNC_LOGS
+    SYNC_LOGS,
+    CORE_TELEMETRY
 }
 
 class OmnisNavigationState {

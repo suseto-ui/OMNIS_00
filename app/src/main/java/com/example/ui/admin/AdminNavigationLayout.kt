@@ -35,6 +35,7 @@ fun AdminNavigationLayout(
     val inputQuery by viewModel.inputQuery.collectAsStateWithLifecycle()
     val ocrValidationState by viewModel.ocrValidationState.collectAsStateWithLifecycle()
     val pendingGatewayReview by viewModel.pendingGatewayReview.collectAsStateWithLifecycle()
+    val pendingSharePayload by viewModel.pendingSharePayload.collectAsStateWithLifecycle()
 
     val navState = remember { OmnisNavigationState() }
     val showDeleteConfirm by navState.showDeleteConfirm.collectAsStateWithLifecycle()
@@ -81,6 +82,18 @@ fun AdminNavigationLayout(
                 ).show()
             }
         }
+    }
+
+    // Share Sheet Bottom Sheet (příjem sdíleného obsahu z jiných aplikací)
+    pendingSharePayload?.let { payload ->
+        com.example.ui.share.ShareActionBottomSheet(
+            payload = payload,
+            onInsertIntoChat = viewModel::applyShareToChatInput,
+            onSummarizeNow = viewModel::summarizeSharedPayload,
+            onExtractOcrOrPdf = viewModel::extractShareOcrOrPdf,
+            onAnalyzeRisks = viewModel::analyzeSharedRisks,
+            onDismiss = viewModel::dismissPendingShare
+        )
     }
 
     // OCR Validation Dialog

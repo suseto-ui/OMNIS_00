@@ -114,7 +114,7 @@ object OmnisGeminiClient {
     private val _activeModel = MutableStateFlow("gemini-3.8-flash")
     val activeModel: StateFlow<String> = _activeModel.asStateFlow()
 
-    private val _activeKeyName = MutableStateFlow("GEMINI_API_KEY (Slot 1)")
+    private val _activeKeyName = MutableStateFlow("Sovereign Backend Proxy (KeyPool: 0)")
     val activeKeyName: StateFlow<String> = _activeKeyName.asStateFlow()
 
     private val _keyPoolLog = MutableStateFlow<List<String>>(emptyList())
@@ -283,6 +283,11 @@ object OmnisGeminiClient {
                 val stats = "KeyPool: ${entries.size} aktivních Gemini API klíčů v rotaci (${entries.joinToString { "${it.name} [${it.masked}]" }})"
                 Log.i(TAG, stats)
                 _rotationStats.value = stats
+                _activeKeyName.value = if (entries.isEmpty()) {
+                    "Sovereign Backend Proxy (Bez klientského klíče)"
+                } else {
+                    "${entries.first().name} (Připraven)"
+                }
             }
         }
 
@@ -485,24 +490,26 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
                         .header("x-goog-api-key", apiKey)
                         .post(requestBody)
                         .build()
-                    val response = okHttpClient.newCall(request).execute()
-                    if (!response.isSuccessful) {
-                        if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
-                            KeyPool.markFailure(apiKey, response.code, "Opponent review code ${response.code}")
+                    okHttpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
+                                KeyPool.markFailure(apiKey, response.code, "Opponent review code ${response.code}")
+                            }
+                            return@use null
                         }
-                        continue
-                    }
 
-                    val bodyString = response.body?.string() ?: continue
-                    val root = JSONObject(bodyString)
-                    val text = root.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text") ?: continue
-                    val json = JSONObject(text.trim())
-                    KeyPool.markSuccess(apiKey)
-                    return OpponentAudit(
-                        riskScore = json.optDouble("risk_score", 0.15).toFloat(),
-                        critique = json.optString("critique", "Oponentní přezkum nezaznamenal závažné rozpory."),
-                        isApproved = json.optBoolean("is_approved", true)
-                    )
+                        val bodyString = response.body?.string() ?: return@use null
+                        val root = JSONObject(bodyString)
+                        val text = root.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
+                            ?: return@use null
+                        val json = JSONObject(text.trim())
+                        KeyPool.markSuccess(apiKey)
+                        OpponentAudit(
+                            riskScore = json.optDouble("risk_score", 0.15).toFloat(),
+                            critique = json.optString("critique", "Oponentní přezkum nezaznamenal závažné rozpory."),
+                            isApproved = json.optBoolean("is_approved", true)
+                        )
+                    }?.let { return it }
                 } catch (e: Exception) {
                     Log.w(TAG, "Opponent review failed on $model with ${keyEntry.name}", e)
                 }
@@ -571,15 +578,27 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
             Log.i(TAG, "Bypassing online Gemini API call during testing, falling back to deterministic synthesis")
             return null
         }
+        // 0. PRIMÁRNÍ KASKÁDA: Sovereign Backend Proxy (pokud je aktivní relace) -> Client KeyPool REST
+        tryBackendAiProxySynthesis(
+            query = query,
+            domain = domain,
+            injectionDetected = injectionDetected,
+            memoryFragments = memoryFragments,
+            executiveOverride = executiveOverride
+        )?.let { backendResult ->
+            com.example.memory.RagMemoryCache.put(query, domain, backendResult)
+            return backendResult
+        }
+
         if (!KeyPool.hasAnyKey()) {
-            val errMsg = "Žádný platný GEMINI_API_KEY (Slot 1, 2 nebo 3) není detekován v Secrets panelu ani v lokální konfiguraci. Aplikace použije lokální syntézu."
+            val errMsg = "Sovereign Backend Proxy nedostupný a žádný platný GEMINI_API_KEY (Slot 1–3) není v KeyPoolu. Aplikace použije lokální syntézu."
             Log.w(TAG, errMsg)
             _lastOnlineError.value = errMsg
             return null
         }
 
         if (!circuitBreaker.canExecute()) {
-            val errMsg = "Jistič kognitivní brány je OTEVŘEN. Spusťte Self-Healing v sekci Stabilita."
+            val errMsg = "Jistič kognitivní brány je OTEVŘEN. Spusťte Self-Healing v sekci Core / Telemetry."
             Log.w(TAG, errMsg)
             _lastOnlineError.value = errMsg
             return null
@@ -593,71 +612,10 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
         }
 
         val isolatedInput = OmnisPromptSanitizer.wrapUntrustedContext(query, "OPERATOR_QUERY")
-        var currentPromptText = "Doména: $domain\n$isolatedInput"
+        val currentPromptText = "Doména: $domain\n$isolatedInput"
         val startTime = System.currentTimeMillis()
 
         try {
-            val requestJson = JSONObject().apply {
-                val contentsArr = JSONArray().apply {
-                    val normalizedHistory = mutableListOf<JSONObject>()
-
-                    // Sémantická komprese paměti & Token Cost Optimization
-                    val compressionRecord = threadHistory.findLast { it.cognitiveProcess == "COMPLETED_SEMANTIC_COMPRESSION" }
-                    val historyToProcess = if (compressionRecord != null) {
-                        val afterCompression = threadHistory.filter { it.timestamp > compressionRecord.timestamp }
-                        listOf(compressionRecord) + afterCompression.takeLast(6)
-                    } else {
-                        threadHistory.takeLast(6)
-                    }
-
-                    var lastRole: String? = null
-                    var currentParts = JSONArray()
-
-                    for (hist in historyToProcess) {
-                        if (hist.content.isBlank()) continue
-                        val roleName = if (hist.role == "assistant") "model" else "user"
-                        if (roleName == lastRole) {
-                            currentParts.put(JSONObject().apply { put("text", hist.content.take(400)) })
-                        } else {
-                            if (lastRole != null) {
-                                normalizedHistory.add(JSONObject().apply {
-                                    put("role", lastRole)
-                                    put("parts", currentParts)
-                                })
-                            }
-                            lastRole = roleName
-                            currentParts = JSONArray().apply {
-                                put(JSONObject().apply { put("text", hist.content.take(400)) })
-                            }
-                        }
-                    }
-                    if (lastRole != null && currentParts.length() > 0) {
-                        normalizedHistory.add(JSONObject().apply {
-                            put("role", lastRole)
-                            put("parts", currentParts)
-                        })
-                    }
-
-                    if (normalizedHistory.isNotEmpty() && normalizedHistory.last().getString("role") == "user") {
-                        val lastItem = normalizedHistory.last()
-                        val parts = lastItem.getJSONArray("parts")
-                        parts.put(JSONObject().apply { put("text", currentPromptText) })
-                    } else {
-                        normalizedHistory.add(JSONObject().apply {
-                            put("role", "user")
-                            put("parts", JSONArray().apply {
-                                put(JSONObject().apply { put("text", currentPromptText) })
-                            })
-                        })
-                    }
-
-                    for (item in normalizedHistory) {
-                        put(item)
-                    }
-                }
-                put("contents", contentsArr)
-            }
-
             val memoryContext = if (memoryFragments.isNotEmpty()) {
                 "Paměťové fragmenty:\n" + memoryFragments.joinToString("\n") { "- ${it.summary}" } + "\n\n"
             } else ""
@@ -670,70 +628,12 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
                 3. Jako follow_up_questions povinně vygeneruj přesně 2 až 3 konkrétní možnosti pro zpřesnění/konkretizaci dotazu v kontextu zadaného tématu.
             """.trimIndent()
 
-            // 0-COST FREE TIER PRIMARY ENGINE: Firebase AI Logic (gemini-3.8-flash)
-            try {
-                val fbAiPrompt = "Dotaz: $query\n\nInstrukce: $activeInstruction\n\nKontext: $memoryContext"
-                val fbResult = FirebaseAiService.generateContent(
-                    prompt = fbAiPrompt,
-                    useLite = _isEcoModeEnabled.value,
-                    timeoutMs = 40_000L
-                )
-                if (fbResult.isSuccess) {
-                    val rawAiText = fbResult.getOrNull()
-                    if (!rawAiText.isNullOrBlank()) {
-                        Log.i(TAG, "Gemini 3.8 Flash odpověděl přes Firebase AI Logic (0-cost free tier)")
-                        _activeModel.value = if (_isEcoModeEnabled.value) "gemini-3.5-flash-lite (Free Tier)" else "gemini-3.8-flash (Free Tier)"
-                        _activeKeyName.value = "Firebase AI Logic App Check (0-cost)"
-                        circuitBreaker.recordSuccess()
-
-                        val resJson = try { JSONObject(rawAiText) } catch (_: Exception) { JSONObject().apply { put("result_data", JSONObject().apply { put("answer", rawAiText) }) } }
-                        val resultData = resJson.optJSONObject("result_data") ?: resJson
-                        val answer = resultData.optString("answer", "").ifBlank { rawAiText }
-                        val thought = resJson.optString("thought_process", "Firebase AI Logic 8D Syntéza")
-                        val vSys = resultData.optDouble("val_sys", 0.95).toFloat()
-                        val vEcon = resultData.optDouble("val_econ", 0.90).toFloat()
-                        val vPsych = resultData.optDouble("val_psych", 0.85).toFloat()
-                        val vEco = resultData.optDouble("val_eco", 0.90).toFloat()
-                        val vLaw = resultData.optDouble("val_law", 0.95).toFloat()
-                        val vSec = resultData.optDouble("val_sec", 0.98).toFloat()
-                        val vPhys = resultData.optDouble("val_phys", 0.88).toFloat()
-                        val vSoc = resultData.optDouble("val_soc", 0.90).toFloat()
-                        val comp = resultData.optDouble("composite_score", 0.95).toFloat()
-
-                        val dynamicFollowUps = mutableListOf<String>()
-                        resultData.optJSONArray("follow_up_questions")?.let { arr ->
-                            for (i in 0 until arr.length()) {
-                                dynamicFollowUps.add(arr.optString(i))
-                            }
-                        }
-                        if (dynamicFollowUps.isEmpty()) {
-                            val smart = com.example.gateway.SemanticQuerySynthesizer.analyzeInputPreflight(query).suggestions
-                            if (smart.isNotEmpty()) {
-                                dynamicFollowUps.addAll(smart.map { it.label })
-                            } else {
-                                dynamicFollowUps.addAll(listOf("Technická implementace", "Bezpečnostní prověrka NIS2", "Optimalizace tokenů"))
-                            }
-                        }
-
-                        val parsed = SynthesisResult(
-                            answer = answer,
-                            cognitiveProcess = thought,
-                            followUpQuestions = dynamicFollowUps,
-                            valSys = vSys, valEcon = vEcon, valPsych = vPsych, valEco = vEco,
-                            valLaw = vLaw, valSec = vSec, valPhys = vPhys, valSoc = vSoc,
-                            composite = comp,
-                            defenseTier = "APPROVED",
-                            reliabilityStatus = "HIGH"
-                        )
-                        com.example.memory.RagMemoryCache.put(query, domain, parsed)
-                        return parsed
-                    }
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "Firebase AI Logic dotaz přeskočen na KeyPool: ${e.message}")
-            }
-
             val orderedKeys = KeyPool.getOrderedKeysForCall()
+            val modelsOrder = if (_isEcoModeEnabled.value) {
+                listOf("gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash")
+            } else {
+                PRIMARY_TEXT_MODELS
+            }
 
             val requestBody = try {
                 val mediaType = "application/json; charset=utf-8".toMediaType()
@@ -807,7 +707,7 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
             }
 
 
-            var successfulResponse: okhttp3.Response? = null
+            var successfulBodyString: String? = null
             var successfulModel: String? = null
             var successfulKeyEntry: KeyPool.KeyEntry? = null
             var lastErrCode = 0
@@ -816,7 +716,7 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
 
             keyLoop@ for (keyEntry in orderedKeys) {
                 val apiKey = keyEntry.key
-                for (candidateModel in PRIMARY_TEXT_MODELS) {
+                for (candidateModel in modelsOrder) {
                     val candidateUrl = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
                     val request = Request.Builder()
                         .url(candidateUrl)
@@ -825,23 +725,28 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
                         .build()
 
                     try {
-                        val response = okHttpClient.newCall(request).execute()
-                        if (response.isSuccessful) {
-                            successfulResponse = response
-                            successfulModel = candidateModel
-                            successfulKeyEntry = keyEntry
-                            KeyPool.markSuccess(apiKey)
-                            break@keyLoop
-                        } else {
-                            lastErrCode = response.code
-                            lastErrBody = response.body?.string() ?: ""
-                            lastRetryAfterSec = response.header("Retry-After")?.trim()?.toLongOrNull()
-                            Log.w(TAG, "Model $candidateModel s klíčem ${keyEntry.name} selhal s HTTP $lastErrCode.")
-                            if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
-                                KeyPool.markFailure(apiKey, response.code, lastErrBody, lastRetryAfterSec)
-                                break // Okamžitá rotace na další klíč v kruhovém fondu
+                        var rotateKey = false
+                        okHttpClient.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                successfulBodyString = response.body?.string()
+                                if (!successfulBodyString.isNullOrBlank()) {
+                                    successfulModel = candidateModel
+                                    successfulKeyEntry = keyEntry
+                                    KeyPool.markSuccess(apiKey)
+                                }
+                            } else {
+                                lastErrCode = response.code
+                                lastErrBody = response.body?.string() ?: ""
+                                lastRetryAfterSec = response.header("Retry-After")?.trim()?.toLongOrNull()
+                                Log.w(TAG, "Model $candidateModel s klíčem ${keyEntry.name} selhal s HTTP $lastErrCode.")
+                                if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
+                                    KeyPool.markFailure(apiKey, response.code, lastErrBody, lastRetryAfterSec)
+                                    rotateKey = true
+                                }
                             }
                         }
+                        if (successfulBodyString != null) break@keyLoop
+                        if (rotateKey) break
                     } catch (netEx: Exception) {
                         Log.w(TAG, "Síťové volání na $candidateModel s ${keyEntry.name} selhalo: ${netEx.message}")
                     }
@@ -850,8 +755,8 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
 
             val latency = System.currentTimeMillis() - startTime
 
-            if (successfulResponse == null || successfulModel == null || successfulKeyEntry == null) {
-                val errMsg = "Všechny Gemini API klíče v rotaci (${orderedKeys.map { it.name }}) a modely (${PRIMARY_TEXT_MODELS.joinToString()}) selhaly (poslední HTTP $lastErrCode: ${lastErrBody.take(200)})."
+            if (successfulBodyString == null || successfulModel == null || successfulKeyEntry == null) {
+                val errMsg = "Všechny Gemini API klíče v rotaci (${orderedKeys.map { it.name }}) a modely (${modelsOrder.joinToString()}) selhaly (poslední HTTP $lastErrCode: ${lastErrBody.take(200)})."
                 Log.w(TAG, errMsg)
                 _lastOnlineError.value = errMsg
                 circuitBreaker.recordFailure()
@@ -881,8 +786,9 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
                 _activeModel.value = successfulModel
                 _modelSwitchLog.value = (_modelSwitchLog.value + "Aktivován model: $successfulModel [Klíč: ${successfulKeyEntry.name}]").takeLast(20)
             }
+            _lastOnlineError.value = null
 
-            val bodyString = successfulResponse.body?.string() ?: return null
+            val bodyString = successfulBodyString ?: return null
             val root = JSONObject(bodyString)
 
             // Extrakce reálných tokenů a výpočet přesných nákladů
@@ -933,7 +839,32 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
 
             val ecoResult = parseEcoResponse(rawText)
             if (ecoResult != null) {
+                val ecoScoresUpper = mapOf(
+                    "SYS" to ecoResult.valSys, "ECON" to ecoResult.valEcon, "PSYCH" to ecoResult.valPsych, "ECO" to ecoResult.valEco,
+                    "LAW" to ecoResult.valLaw, "SEC" to ecoResult.valSec, "PHYS" to ecoResult.valPhys, "SOC" to ecoResult.valSoc
+                )
+                val ecoGateVerdict = com.example.gateway.RefusalLadderEngine.evaluateOutput(
+                    query = query,
+                    outputText = ecoResult.answer,
+                    outputDomainScores = ecoScoresUpper
+                )
+                if (!ecoGateVerdict.isApproved && !executiveOverride) {
+                    val gate = ecoGateVerdict.refusingGate
+                    return SynthesisResult(
+                        answer = "⛔ **EXPLICIT GROUNDED REFUSAL NA VÝSTUPU (${gate?.gateId?.code ?: "G1-G6"})**\n\n" +
+                            "${gate?.reason ?: "Eco výstup neprošel post-generační kontrolou G1–G6."}",
+                        cognitiveProcess = "Dual-Gate Eco Post-Generation Refusal (${gate?.gateId?.code})",
+                        followUpQuestions = listOf("Upřesnit zadání?", "Zobrazit audit G1–G6?"),
+                        valSys = 0.6f, valEcon = 0.5f, valPsych = 0.5f, valEco = 0.5f,
+                        valLaw = 0.2f, valSec = 0.2f, valPhys = 0.5f, valSoc = 0.5f,
+                        composite = 0.25f,
+                        defenseTier = "BLOCKED",
+                        defenseNotes = gate?.reason ?: "Output Gate Refusal"
+                    )
+                }
                 circuitBreaker.recordSuccess()
+                _lastOnlineError.value = null
+                com.example.memory.RagMemoryCache.put(query, domain, ecoResult)
                 return ecoResult
             }
 
@@ -1104,6 +1035,222 @@ Pole "answer" MUSÍ být přehledně členěno do 4 oddílů s markdown nadpisy:
             circuitBreaker.recordFailure()
             return null
         }
+    }
+
+    private suspend fun tryBackendAiProxyResponse(userInput: String): HybridOmnisResponse? = withContext(ioDispatcher) {
+        val token = com.example.auth.OmnisAuthService.currentSession.value?.token?.takeIf { it.isNotBlank() }
+            ?: return@withContext null
+        val cleanBase = baseUrl.trimEnd('/')
+        if (cleanBase.isBlank() || cleanBase.contains("placeholder", ignoreCase = true)) {
+            return@withContext null
+        }
+
+        return@withContext try {
+            val safeRaw = userInput.take(2400)
+            var encodedInput = java.net.URLEncoder.encode(safeRaw, "UTF-8")
+            if (encodedInput.length > 4000) {
+                encodedInput = java.net.URLEncoder.encode(safeRaw.take(1200), "UTF-8")
+            }
+            val url = "$cleanBase/api/v3/omnis/process?user_input=$encodedInput"
+            val emptyBody = "{}".toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/json")
+                .post(emptyBody)
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.d(TAG, "Sovereign Backend AI proxy vrátil HTTP ${response.code}; pokračuji na KeyPool REST.")
+                    return@use null
+                }
+                val bodyString = response.body?.string()?.takeIf { it.isNotBlank() } ?: return@use null
+                val parsed = moshi.adapter(HybridOmnisResponse::class.java).fromJson(bodyString)
+                if (parsed != null && (!parsed.immediateResponse.isNullOrBlank() || parsed.executionPlan.isNotEmpty())) {
+                    if (_activeModel.value != "omnis-backend-proxy") {
+                        _modelSwitchLog.value = (_modelSwitchLog.value + "Aktivován Sovereign Backend Proxy").takeLast(20)
+                    }
+                    _activeModel.value = "omnis-backend-proxy"
+                    _activeKeyName.value = "Sovereign Backend Gateway"
+                    _lastOnlineError.value = null
+                    circuitBreaker.recordSuccess()
+                    com.example.gateway.OmnisCircuitBreaker.reportSuccess()
+                    parsed.activePersona?.let { _activePersona.value = it }
+                    parsed.systemEntropy?.let { _systemEntropy.value = it }
+                }
+                parsed
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Sovereign Backend AI proxy nedostupný, přecházím na KeyPool: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun tryBackendAiProxySynthesis(
+        query: String,
+        domain: String,
+        injectionDetected: Boolean,
+        memoryFragments: List<com.example.data.MemoryFragment>,
+        executiveOverride: Boolean
+    ): SynthesisResult? {
+        val enrichedInput = if (memoryFragments.isNotEmpty()) {
+            val memPrefix = memoryFragments.take(3).joinToString("; ") { it.summary }
+            "[$domain | Kontext: $memPrefix] $query"
+        } else {
+            "[$domain] $query"
+        }
+        val response = tryBackendAiProxyResponse(enrichedInput) ?: return null
+        val answerText = response.immediateResponse?.takeIf { it.isNotBlank() }
+            ?: response.executionPlan.joinToString("\n") { "${it.stepNumber}. ${it.actionDescription}" }
+        if (answerText.isBlank()) return null
+
+        val tier = when {
+            executiveOverride -> "APPROVED"
+            injectionDetected -> "WARNING"
+            response.confidenceScore >= OmnisConfidenceGate.THRESHOLD_APPROVED -> "APPROVED"
+            response.confidenceScore >= OmnisConfidenceGate.THRESHOLD_WARNING -> "WARNING"
+            else -> "BLOCKED"
+        }
+
+        val followUps = com.example.gateway.SemanticQuerySynthesizer.analyzeInputPreflight(query)
+            .suggestions
+            .map { it.label }
+            .ifEmpty {
+                listOf("Detailní 8D rozklad", "Bezpečnostní audit NIS2", "Ověřit kauzální dopady")
+            }
+
+        return SynthesisResult(
+            answer = answerText,
+            cognitiveProcess = "Sovereign Backend Gateway Proxy (${response.intent}, conf=${response.confidenceScore})",
+            followUpQuestions = followUps,
+            valSys = 0.88f,
+            valEcon = 0.82f,
+            valPsych = 0.80f,
+            valEco = 0.82f,
+            valLaw = 0.90f,
+            valSec = 0.92f,
+            valPhys = 0.84f,
+            valSoc = 0.82f,
+            composite = response.confidenceScore.coerceIn(0.1f, 1.0f),
+            defenseTier = tier,
+            defenseNotes = "Zpracováno přes Sovereign Backend Proxy bez Firebase SDK.",
+            confidenceScore = response.confidenceScore,
+            reliabilityStatus = if (response.confidenceScore >= 0.75f) "HIGH" else "MEDIUM",
+            activePersona = response.activePersona,
+            systemEntropy = response.systemEntropy,
+            learnedNodeId = response.learnedNodeId
+        )
+    }
+
+    /**
+     * Univerzální textová kaskáda bez Firebase SDK:
+     * 1. Sovereign Backend Proxy (/api/v3/omnis/process)
+     * 2. Client Gemini KeyPool REST s rotací klíčů a modelů
+     */
+    suspend fun generateCascadeText(
+        prompt: String,
+        useLite: Boolean = _isEcoModeEnabled.value
+    ): Result<String> = withContext(ioDispatcher) {
+        if (com.example.defense.DatabaseConfig.isTesting) {
+            return@withContext Result.failure(IllegalStateException("Online cascade bypassed during testing"))
+        }
+
+        tryBackendAiProxyResponse(prompt)?.let { proxyRes ->
+            val proxyText = proxyRes.immediateResponse?.takeIf { it.isNotBlank() }
+                ?: proxyRes.executionPlan.joinToString("\n") { "${it.stepNumber}. ${it.actionDescription}" }
+            if (proxyText.isNotBlank()) {
+                return@withContext Result.success(proxyText)
+            }
+        }
+
+        val orderedKeys = KeyPool.getOrderedKeysForCall()
+        if (orderedKeys.isEmpty()) {
+            val errMsg = "Žádný klíč v KeyPoolu a Sovereign Backend Proxy nedostupný."
+            _lastOnlineError.value = errMsg
+            return@withContext Result.failure(IllegalStateException(errMsg))
+        }
+
+        val modelsOrder = if (useLite) {
+            listOf("gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash")
+        } else {
+            PRIMARY_TEXT_MODELS
+        }
+
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+        val requestJson = JSONObject().apply {
+            put("contents", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply { put("text", prompt) })
+                    })
+                })
+            })
+            put("generationConfig", JSONObject().apply {
+                put("temperature", 0.25)
+            })
+        }
+        val requestBody = requestJson.toString().toRequestBody(mediaType)
+
+        var lastCode = 0
+        var lastBody = ""
+        for (keyEntry in orderedKeys) {
+            val apiKey = keyEntry.key
+            var rotateKey = false
+            for (candidateModel in modelsOrder) {
+                val candidateUrl = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
+                val request = Request.Builder()
+                    .url(candidateUrl)
+                    .header("x-goog-api-key", apiKey)
+                    .post(requestBody)
+                    .build()
+                try {
+                    okHttpClient.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val bodyStr = response.body?.string() ?: ""
+                            val text = JSONObject(bodyStr)
+                                .optJSONArray("candidates")
+                                ?.optJSONObject(0)
+                                ?.optJSONObject("content")
+                                ?.optJSONArray("parts")
+                                ?.optJSONObject(0)
+                                ?.optString("text")
+                                ?.trim()
+                            if (!text.isNullOrBlank()) {
+                                KeyPool.markSuccess(apiKey)
+                                if (_activeModel.value != candidateModel) {
+                                    _activeModel.value = candidateModel
+                                    _modelSwitchLog.value = (_modelSwitchLog.value + "Aktivován model: $candidateModel [Klíč: ${keyEntry.name}]").takeLast(20)
+                                }
+                                _lastOnlineError.value = null
+                                circuitBreaker.recordSuccess()
+                                return@withContext Result.success(text)
+                            }
+                        } else {
+                            lastCode = response.code
+                            lastBody = response.body?.string() ?: ""
+                            val retryAfter = response.header("Retry-After")?.trim()?.toLongOrNull()
+                            if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
+                                KeyPool.markFailure(apiKey, response.code, lastBody, retryAfter)
+                                rotateKey = true
+                            }
+                        }
+                    }
+                    if (rotateKey) break
+                } catch (e: Exception) {
+                    Log.w(TAG, "Cascade text failed on $candidateModel (${keyEntry.name}): ${e.message}")
+                }
+            }
+        }
+
+        val errMsg = "Kaskáda Backend/KeyPool selhala (HTTP $lastCode: ${lastBody.take(150)})"
+        _lastOnlineError.value = errMsg
+        com.example.gateway.OmnisCircuitBreaker.reportFailure(
+            httpCode = if (lastCode > 0) lastCode else 503,
+            errorMsg = errMsg
+        )
+        return@withContext Result.failure(IllegalStateException(errMsg))
     }
 
     fun deterministicOmnisSynthesis(
@@ -1331,49 +1478,54 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
 
                     val mediaType = "application/json; charset=utf-8".toMediaType()
                     val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestJson.toString().toRequestBody(mediaType)).build()
-                    val response = okHttpClient.newCall(request).execute()
-                    val latency = System.currentTimeMillis() - startTime
-
-                    if (!response.isSuccessful) {
-                        if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
-                            KeyPool.markFailure(apiKey, response.code, "Batch code ${response.code}")
+                    var rotateKey = false
+                    var parsedBatchMap: Map<String, SynthesisResult>? = null
+                    okHttpClient.newCall(request).execute().use { response ->
+                        val latency = System.currentTimeMillis() - startTime
+                        if (!response.isSuccessful) {
+                            if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
+                                KeyPool.markFailure(apiKey, response.code, "Batch code ${response.code}")
+                                rotateKey = true
+                            }
+                            return@use
                         }
-                        continue
-                    }
 
-                    val bodyString = response.body?.string() ?: continue
-                    KeyPool.markSuccess(apiKey)
+                        val bodyString = response.body?.string() ?: return@use
+                        KeyPool.markSuccess(apiKey)
 
-                    val tokensSaved = (items.size - 1) * 400L
-                    com.example.monitoring.PerformanceMonitor.recordRequest(latency, tokensSaved = tokensSaved, isBatch = true)
-                    val root = JSONObject(bodyString)
-                    val text = root.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
-                        ?: continue
+                        val tokensSaved = (items.size - 1) * 400L
+                        com.example.monitoring.PerformanceMonitor.recordRequest(latency, tokensSaved = tokensSaved, isBatch = true)
+                        val root = JSONObject(bodyString)
+                        val text = root.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
+                            ?: return@use
 
-                    val resJson = JSONObject(text)
-                    val responsesObj = resJson.optJSONObject("responses") ?: continue
+                        val resJson = JSONObject(text)
+                        val responsesObj = resJson.optJSONObject("responses") ?: return@use
 
-                    val resultMap = mutableMapOf<String, SynthesisResult>()
-                    items.forEach { item ->
-                        responsesObj.optJSONObject(item.id)?.let { resultData ->
-                            resultMap[item.id] = SynthesisResult(
-                                answer = resultData.optString("answer", "Žádná odpověď v batchi."),
-                                cognitiveProcess = resultData.optString("thought_process", "Batch processing."),
-                                followUpQuestions = emptyList(),
-                                valSys = resultData.optDouble("val_sys", 0.9).toFloat(),
-                                valEcon = resultData.optDouble("val_econ", 0.8).toFloat(),
-                                valPsych = resultData.optDouble("val_psych", 0.8).toFloat(),
-                                valEco = resultData.optDouble("val_eco", 0.8).toFloat(),
-                                valLaw = resultData.optDouble("val_law", 0.8).toFloat(),
-                                valSec = resultData.optDouble("val_sec", 0.8).toFloat(),
-                                valPhys = resultData.optDouble("val_phys", 0.8).toFloat(),
-                                valSoc = resultData.optDouble("val_soc", 0.8).toFloat(),
-                                composite = resultData.optDouble("composite_score", 0.85).toFloat(),
-                                defenseTier = "APPROVED"
-                            )
+                        val resultMap = mutableMapOf<String, SynthesisResult>()
+                        items.forEach { item ->
+                            responsesObj.optJSONObject(item.id)?.let { resultData ->
+                                resultMap[item.id] = SynthesisResult(
+                                    answer = resultData.optString("answer", "Žádná odpověď v batchi."),
+                                    cognitiveProcess = resultData.optString("thought_process", "Batch processing."),
+                                    followUpQuestions = emptyList(),
+                                    valSys = resultData.optDouble("val_sys", 0.9).toFloat(),
+                                    valEcon = resultData.optDouble("val_econ", 0.8).toFloat(),
+                                    valPsych = resultData.optDouble("val_psych", 0.8).toFloat(),
+                                    valEco = resultData.optDouble("val_eco", 0.8).toFloat(),
+                                    valLaw = resultData.optDouble("val_law", 0.8).toFloat(),
+                                    valSec = resultData.optDouble("val_sec", 0.8).toFloat(),
+                                    valPhys = resultData.optDouble("val_phys", 0.8).toFloat(),
+                                    valSoc = resultData.optDouble("val_soc", 0.8).toFloat(),
+                                    composite = resultData.optDouble("composite_score", 0.85).toFloat(),
+                                    defenseTier = "APPROVED"
+                                )
+                            }
                         }
+                        parsedBatchMap = resultMap
                     }
-                    return@withContext resultMap
+                    if (parsedBatchMap != null) return@withContext parsedBatchMap!!
+                    if (rotateKey) break
                 } catch (e: Exception) {
                     Log.e(TAG, "Batch API failed on $candidateModel with ${keyEntry.name}", e)
                 }
@@ -1652,25 +1804,27 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
                 val requestBody = requestJson.toString().toRequestBody(mediaType)
                 val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestBody).build()
 
-                val response = okHttpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
-                        KeyPool.markFailure(apiKey, response.code, "Dialectic code ${response.code}")
+                val dialecticText = okHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
+                            KeyPool.markFailure(apiKey, response.code, "Dialectic code ${response.code}")
+                        }
+                        return@use null
                     }
-                    continue
+
+                    val bodyString = response.body?.string() ?: return@use null
+                    val root = JSONObject(bodyString)
+                    val candidates = root.optJSONArray("candidates") ?: return@use null
+                    if (candidates.length() == 0) return@use null
+                    val first = candidates.getJSONObject(0)
+                    val content = first.optJSONObject("content") ?: return@use null
+                    val parts = content.optJSONArray("parts") ?: return@use null
+                    if (parts.length() == 0) return@use null
+
+                    KeyPool.markSuccess(apiKey)
+                    parts.getJSONObject(0).optString("text")?.trim()
                 }
-
-                val bodyString = response.body?.string() ?: continue
-                val root = JSONObject(bodyString)
-                val candidates = root.optJSONArray("candidates") ?: continue
-                if (candidates.length() == 0) continue
-                val first = candidates.getJSONObject(0)
-                val content = first.optJSONObject("content") ?: continue
-                val parts = content.optJSONArray("parts") ?: continue
-                if (parts.length() == 0) continue
-
-                KeyPool.markSuccess(apiKey)
-                return@withContext parts.getJSONObject(0).optString("text")?.trim()
+                if (!dialecticText.isNullOrBlank()) return@withContext dialecticText
             } catch (e: Exception) {
                 Log.e(TAG, "Deep dialectic synthesis failed on $candidateModel with ${keyEntry.name}", e)
             }
@@ -1721,24 +1875,34 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
                     val requestBody = requestJson.toString().toRequestBody(mediaType)
                     val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestBody).build()
 
-                    val response = okHttpClient.newCall(request).execute()
-                    if (!response.isSuccessful) {
-                        if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
-                            KeyPool.markFailure(apiKey, response.code, "Vision code ${response.code}")
+                    var rotateKey = false
+                    val extracted = okHttpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
+                                KeyPool.markFailure(apiKey, response.code, "Vision code ${response.code}")
+                                rotateKey = true
+                            }
+                            return@use null
                         }
-                        continue
-                    }
 
-                    val bodyString = response.body?.string() ?: continue
-                    val root = JSONObject(bodyString)
-                    val candidates = root.optJSONArray("candidates") ?: continue
-                    if (candidates.length() == 0) continue
-                    val first = candidates.getJSONObject(0)
-                    val content = first.optJSONObject("content") ?: continue
-                    val parts = content.optJSONArray("parts") ?: continue
-                    if (parts.length() == 0) continue
-                    KeyPool.markSuccess(apiKey)
-                    return@withContext parts.getJSONObject(0).optString("text")?.trim()
+                        val bodyString = response.body?.string() ?: return@use null
+                        val root = JSONObject(bodyString)
+                        val candidates = root.optJSONArray("candidates") ?: return@use null
+                        if (candidates.length() == 0) return@use null
+                        val first = candidates.getJSONObject(0)
+                        val content = first.optJSONObject("content") ?: return@use null
+                        val parts = content.optJSONArray("parts") ?: return@use null
+                        if (parts.length() == 0) return@use null
+                        KeyPool.markSuccess(apiKey)
+                        if (_activeModel.value != candidateModel) {
+                            _activeModel.value = candidateModel
+                            _modelSwitchLog.value = (_modelSwitchLog.value + "Vision OCR model: $candidateModel [Klíč: ${keyEntry.name}]").takeLast(20)
+                        }
+                        _lastOnlineError.value = null
+                        parts.getJSONObject(0).optString("text")?.trim()
+                    }
+                    if (!extracted.isNullOrBlank()) return@withContext extracted
+                    if (rotateKey) break
                 } catch (e: Exception) {
                     Log.e(TAG, "Vision extraction failed on $candidateModel with ${keyEntry.name}", e)
                 }
@@ -1790,24 +1954,34 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
                     val requestBody = requestJson.toString().toRequestBody(mediaType)
                     val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestBody).build()
 
-                    val response = okHttpClient.newCall(request).execute()
-                    if (!response.isSuccessful) {
-                        if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
-                            KeyPool.markFailure(apiKey, response.code, "Document code ${response.code}")
+                    var rotateKey = false
+                    val extracted = okHttpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
+                                KeyPool.markFailure(apiKey, response.code, "Document code ${response.code}")
+                                rotateKey = true
+                            }
+                            return@use null
                         }
-                        continue
-                    }
 
-                    val bodyString = response.body?.string() ?: continue
-                    val root = JSONObject(bodyString)
-                    val candidates = root.optJSONArray("candidates") ?: continue
-                    if (candidates.length() == 0) continue
-                    val first = candidates.getJSONObject(0)
-                    val content = first.optJSONObject("content") ?: continue
-                    val parts = content.optJSONArray("parts") ?: continue
-                    if (parts.length() == 0) continue
-                    KeyPool.markSuccess(apiKey)
-                    return@withContext parts.getJSONObject(0).optString("text")?.trim()
+                        val bodyString = response.body?.string() ?: return@use null
+                        val root = JSONObject(bodyString)
+                        val candidates = root.optJSONArray("candidates") ?: return@use null
+                        if (candidates.length() == 0) return@use null
+                        val first = candidates.getJSONObject(0)
+                        val content = first.optJSONObject("content") ?: return@use null
+                        val parts = content.optJSONArray("parts") ?: return@use null
+                        if (parts.length() == 0) return@use null
+                        KeyPool.markSuccess(apiKey)
+                        if (_activeModel.value != candidateModel) {
+                            _activeModel.value = candidateModel
+                            _modelSwitchLog.value = (_modelSwitchLog.value + "Dokumentový model: $candidateModel [Klíč: ${keyEntry.name}]").takeLast(20)
+                        }
+                        _lastOnlineError.value = null
+                        parts.getJSONObject(0).optString("text")?.trim()
+                    }
+                    if (!extracted.isNullOrBlank()) return@withContext extracted
+                    if (rotateKey) break
                 } catch (e: Exception) {
                     Log.e(TAG, "Document extraction failed on $candidateModel with ${keyEntry.name}", e)
                 }
@@ -1869,24 +2043,29 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
                     val mediaType = "application/json; charset=utf-8".toMediaType()
                     val requestBody = requestJson.toString().toRequestBody(mediaType)
                     val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestBody).build()
-                    val response = okHttpClient.newCall(request).execute()
-                    if (!response.isSuccessful) {
-                        if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
-                            KeyPool.markFailure(apiKey, response.code, "Comparison code ${response.code}")
+                    var rotateKey = false
+                    val compResult = okHttpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
+                                KeyPool.markFailure(apiKey, response.code, "Comparison code ${response.code}")
+                                rotateKey = true
+                            }
+                            return@use null
                         }
-                        continue
-                    }
 
-                    val bodyStr = response.body?.string() ?: continue
-                    val root = JSONObject(bodyStr)
-                    val text = root.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
-                        ?: continue
-                    val resJson = JSONObject(text.trim())
-                    KeyPool.markSuccess(apiKey)
-                    return@withContext ComparisonResult(
-                        resJson.optString("comparisonText", "Syntéza 8D odchylek dokončena."),
-                        resJson.optString("harmonizedStrategy", "Harmonizovaný plán byl sestaven.")
-                    )
+                        val bodyStr = response.body?.string() ?: return@use null
+                        val root = JSONObject(bodyStr)
+                        val text = root.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
+                            ?: return@use null
+                        val resJson = JSONObject(text.trim())
+                        KeyPool.markSuccess(apiKey)
+                        ComparisonResult(
+                            resJson.optString("comparisonText", "Syntéza 8D odchylek dokončena."),
+                            resJson.optString("harmonizedStrategy", "Harmonizovaný plán byl sestaven.")
+                        )
+                    }
+                    if (compResult != null) return@withContext compResult
+                    if (rotateKey) break
                 } catch (e: Exception) {
                     Log.e(TAG, "Comparison synthesis error on $candidateModel with ${keyEntry.name}", e)
                 }
@@ -1923,10 +2102,9 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
     }
 
     suspend fun summarizeConversation(records: List<com.example.data.OmnisRecord>): String? = withContext(ioDispatcher) {
-        val orderedKeys = KeyPool.getOrderedKeysForCall()
-        if (orderedKeys.isEmpty() || records.size < 5) return@withContext null
+        if (records.size < 5) return@withContext null
 
-        val historyText = records.joinToString("\n") { "[${it.role}]: ${it.content}" }
+        val historyText = records.takeLast(20).joinToString("\n") { "[${it.role}]: ${it.content.take(500)}" }
 
         val prompt = """
             Jsi O.M.N.I.S. Semantic Compressor. Tvým úkolem je vytvořit hustou sémantickou kompresi (souhrn) dosavadní konverzace.
@@ -1941,46 +2119,8 @@ Aplikujte navržené parametry do produkčního prostředí nebo využijte 8D ka
             $historyText
         """.trimIndent()
 
-        for (keyEntry in orderedKeys) {
-            val apiKey = keyEntry.key
-            for (candidateModel in PRIMARY_TEXT_MODELS) {
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/$candidateModel:generateContent"
-                try {
-                    val requestJson = JSONObject().apply {
-                        put("contents", JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("role", "user")
-                                put("parts", JSONArray().apply {
-                                    put(JSONObject().apply { put("text", prompt) })
-                                })
-                            })
-                        })
-                        put("generationConfig", JSONObject().apply {
-                            put("temperature", 0.3)
-                        })
-                    }
-
-                    val mediaType = "application/json; charset=utf-8".toMediaType()
-                    val request = Request.Builder().url(url).header("x-goog-api-key", apiKey).post(requestJson.toString().toRequestBody(mediaType)).build()
-                    val response = okHttpClient.newCall(request).execute()
-
-                    if (!response.isSuccessful) {
-                        if (response.code == 429 || response.code == 402 || response.code == 403 || response.code == 400) {
-                            KeyPool.markFailure(apiKey, response.code, "Summarize code ${response.code}")
-                        }
-                        continue
-                    }
-
-                    val bodyStr = response.body?.string() ?: continue
-                    val root = JSONObject(bodyStr)
-                    KeyPool.markSuccess(apiKey)
-                    return@withContext root.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")?.trim()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Semantic compression failed on $candidateModel with ${keyEntry.name}", e)
-                }
-            }
-        }
-        return@withContext null
+        // Deleguje na univerzální kaskádu (Sovereign Backend Proxy -> KeyPool REST s Eco lite prioritou)
+        return@withContext generateCascadeText(prompt, useLite = true).getOrNull()
     }
 
     fun parseEcoResponse(rawText: String): SynthesisResult? {

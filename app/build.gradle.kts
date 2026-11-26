@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.google.services)
 }
 
 android {
@@ -115,13 +114,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
-    // Firebase & Auth
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.auth)
-    implementation(libs.firebase.ai)
-    implementation(libs.firebase.appcheck)
-    debugImplementation(libs.firebase.appcheck.debug)
-    implementation(libs.firebase.appcheck.playintegrity)
+    // Google Sign-In via Jetpack Credential Manager (No Firebase SDK)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services)
     implementation(libs.googleid)

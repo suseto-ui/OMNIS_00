@@ -195,14 +195,14 @@ fun UserDrawerContent(
                         containerColor = OmnisCyan.copy(alpha = 0.2f),
                         contentColor = OmnisCyan
                     ),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.height(28.dp),
+                    modifier = Modifier.heightIn(min = 36.dp).minimumInteractiveComponentSize(),
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, OmnisCyan.copy(alpha = 0.6f))
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Nové vlákno", modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("+ NOVÉ", fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Text("NOVÉ", fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 }
             }
 
@@ -293,20 +293,20 @@ fun UserDrawerContent(
                                         renameInputText = thread.threadTitle
                                         threadToRename = thread
                                     },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(32.dp).minimumInteractiveComponentSize()
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Edit,
                                         contentDescription = "Přejmenovat vlákno",
                                         tint = OmnisTextMuted.copy(alpha = 0.6f),
-                                        modifier = Modifier.size(13.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
 
                                 if (availableThreads.size > 1) {
                                     IconButton(
                                         onClick = { onDeleteThread(thread.threadId) },
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(32.dp).minimumInteractiveComponentSize()
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Close,
@@ -324,8 +324,8 @@ fun UserDrawerContent(
 
             HorizontalDivider(color = OmnisBorderDark.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 8.dp))
 
-            // 1. Sekce: KONVERZACE
-            UserSectionHeader("💬 KONVERZACE")
+            // 1. Sekce: KONVERZACE & KOGNICE
+            UserSectionHeader("💬 KONVERZACE & SÍTĚ")
 
             UserDrawerItem(
                 title = "Kognitivní Chat",
@@ -333,6 +333,14 @@ fun UserDrawerContent(
                 selected = activeTab == OmnisTab.CHAT,
                 tint = OmnisCyan,
                 onClick = { onTabSelected(OmnisTab.CHAT) }
+            )
+
+            UserDrawerItem(
+                title = "Neural Nexus",
+                icon = Icons.Default.Hub,
+                selected = activeTab == OmnisTab.NEXUS,
+                tint = OmnisCyan,
+                onClick = { onTabSelected(OmnisTab.NEXUS) }
             )
 
             UserDrawerItem(
@@ -345,53 +353,8 @@ fun UserDrawerContent(
 
             HorizontalDivider(color = OmnisBorderDark.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 6.dp))
 
-            // 2. Sekce: KOGNICE
-            UserSectionHeader("🧠 KOGNICE")
-
-            UserDrawerItem(
-                title = "Neural Nexus",
-                icon = Icons.Default.Hub,
-                selected = activeTab == OmnisTab.NEXUS,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.NEXUS) }
-            )
-
-            UserDrawerItem(
-                title = "Epistemická Dialektika",
-                icon = Icons.AutoMirrored.Filled.CompareArrows,
-                selected = activeTab == OmnisTab.DIALECTICS,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.DIALECTICS) }
-            )
-
-            UserDrawerItem(
-                title = "Multi-Agentní Debata",
-                icon = Icons.Default.Groups,
-                selected = activeTab == OmnisTab.MULTI_AGENT_DEBATE,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.MULTI_AGENT_DEBATE) }
-            )
-
-            UserDrawerItem(
-                title = "Do(X) Kauzální Simulátor",
-                icon = Icons.Default.AccountTree,
-                selected = activeTab == OmnisTab.CAUSAL_SIMULATOR,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.CAUSAL_SIMULATOR) }
-            )
-
-            UserDrawerItem(
-                title = "Tenzorový Dohled & Autoregrese",
-                icon = Icons.Default.Autorenew,
-                selected = activeTab == OmnisTab.TENSOR_OVERSIGHT,
-                tint = OmnisViolet,
-                onClick = { onTabSelected(OmnisTab.TENSOR_OVERSIGHT) }
-            )
-
-            HorizontalDivider(color = OmnisBorderDark.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 6.dp))
-
-            // 3. Sekce: CÍLE
-            UserSectionHeader("🎯 CÍLE")
+            // 2. Sekce: CÍLE & VÝSTUPY
+            UserSectionHeader("🎯 CÍLE & ARTEFAKTY")
 
             UserDrawerItem(
                 title = "Operační Kokpit",
@@ -435,15 +398,15 @@ fun UserDrawerContent(
 
             HorizontalDivider(color = OmnisBorderDark.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 6.dp))
 
-            // 4. Sekce: SPRÁVA
-            UserSectionHeader("⚙️ SPRÁVA")
+            // 3. Sekce: DIAGNOSTIKA & SPRÁVA
+            UserSectionHeader("⚙️ DIAGNOSTIKA & SPRÁVA")
 
             UserDrawerItem(
-                title = "Analytický Přehled",
+                title = OmnisStrings.tabTitle(OmnisTab.CORE_TELEMETRY),
                 icon = Icons.Default.Analytics,
-                selected = activeTab == OmnisTab.ANALYTICS,
-                tint = OmnisAmber,
-                onClick = { onTabSelected(OmnisTab.ANALYTICS) }
+                selected = activeTab == OmnisTab.CORE_TELEMETRY,
+                tint = OmnisViolet,
+                onClick = { onTabSelected(OmnisTab.CORE_TELEMETRY) }
             )
 
             UserDrawerItem(
@@ -452,14 +415,6 @@ fun UserDrawerContent(
                 selected = activeTab == OmnisTab.GUIDE,
                 tint = OmnisAmber,
                 onClick = { onTabSelected(OmnisTab.GUIDE) }
-            )
-
-            UserDrawerItem(
-                title = OmnisStrings.tabTitle(OmnisTab.SYNC_LOGS),
-                icon = Icons.Default.CloudSync,
-                selected = activeTab == OmnisTab.SYNC_LOGS,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.SYNC_LOGS) }
             )
 
             UserDrawerItem(
@@ -511,7 +466,7 @@ fun UserDrawerContent(
 
                     IconButton(
                         onClick = onLogoutClick,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ExitToApp,
@@ -560,6 +515,7 @@ private fun UserDrawerItem(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .padding(vertical = 2.dp)
             .clickable { onClick() },
         color = if (selected) tint.copy(alpha = 0.15f) else Color.Transparent,

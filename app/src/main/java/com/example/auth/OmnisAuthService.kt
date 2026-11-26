@@ -170,15 +170,20 @@ object OmnisAuthService {
     }
 
     fun logout(context: Context) {
-        UserAuthService.instance.logout(context)
-        authManager.logout(context)
+        val appContext = context.applicationContext
+        UserAuthService.instance.logout(appContext)
+        authManager.logout(appContext)
+        GoogleAuthManager.clearLocalAccount()
+        serviceScope?.let { scope ->
+            GoogleAuthManager.signOut(appContext, scope)
+        }
         _currentSession.value = null
         _currentUserRole.value = UserRole.STANDARD_USER
         _isAuthenticated.value = false
     }
 
-    suspend fun loginWithGoogle(context: Context, idToken: String, firebaseUser: com.google.firebase.auth.FirebaseUser? = null): AuthResult {
-        val result = UserAuthService.instance.loginWithGoogle(idToken, firebaseUser)
+    suspend fun loginWithGoogle(context: Context, idToken: String, googleAccount: GoogleAccountInfo? = null): AuthResult {
+        val result = UserAuthService.instance.loginWithGoogle(idToken, googleAccount)
         if (result is AuthResult.Success) {
             _currentSession.value = result.session
             _currentUserRole.value = result.session.role

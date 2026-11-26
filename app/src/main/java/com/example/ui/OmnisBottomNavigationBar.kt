@@ -44,23 +44,23 @@ fun OmnisBottomNavigationBar(
     val items = if (userRole == UserRole.ADMIN_OPERATOR) {
         listOf(
             NavigationTabItem(OmnisTab.ADMIN, "Admin", Icons.Default.AdminPanelSettings, OmnisAmber),
-            NavigationTabItem(OmnisTab.MATRIX, if (currentLang == AppLanguage.EN) "8D Matrix" else "8D", Icons.Default.Analytics, OmnisAmber),
             NavigationTabItem(OmnisTab.CHAT, "Chat", Icons.AutoMirrored.Filled.Chat, OmnisCyan),
             NavigationTabItem(OmnisTab.NEXUS, "Nexus", Icons.Default.Hub, OmnisCyan),
+            NavigationTabItem(OmnisTab.CORE_TELEMETRY, "Telemetry", Icons.Default.Speed, OmnisViolet),
             NavigationTabItem(OmnisTab.SETTINGS, if (currentLang == AppLanguage.EN) "Settings" else "Nastavení", Icons.Default.Settings, OmnisCyan)
         )
     } else {
-        // Běžný uživatel: Chat, Kognitivní Nexus, Cíle, Artefakty a Nastavení
+        // Běžný uživatel: Chat, Nexus, Cíle, Telemetry a Nastavení
         listOf(
             NavigationTabItem(
                 tab = OmnisTab.CHAT,
-                label = if (currentLang == AppLanguage.EN) "Chat" else "Chat",
+                label = "Chat",
                 icon = Icons.AutoMirrored.Filled.Chat,
                 activeColor = OmnisCyan
             ),
             NavigationTabItem(
                 tab = OmnisTab.NEXUS,
-                label = if (currentLang == AppLanguage.EN) "Nexus" else "Nexus",
+                label = "Nexus",
                 icon = Icons.Default.Hub,
                 activeColor = OmnisCyan
             ),
@@ -69,6 +69,12 @@ fun OmnisBottomNavigationBar(
                 label = if (currentLang == AppLanguage.EN) "Goals" else "Cíle",
                 icon = Icons.Default.Flag,
                 activeColor = OmnisEmerald
+            ),
+            NavigationTabItem(
+                tab = OmnisTab.CORE_TELEMETRY,
+                label = "Telemetry",
+                icon = Icons.Default.Speed,
+                activeColor = OmnisViolet
             ),
             NavigationTabItem(
                 tab = OmnisTab.SETTINGS,

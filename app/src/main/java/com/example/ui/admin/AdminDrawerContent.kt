@@ -190,14 +190,14 @@ fun AdminDrawerContent(
                         containerColor = OmnisAmber.copy(alpha = 0.2f),
                         contentColor = OmnisAmber
                     ),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.height(28.dp),
+                    modifier = Modifier.heightIn(min = 36.dp).minimumInteractiveComponentSize(),
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, OmnisAmber.copy(alpha = 0.6f))
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Nové vlákno", modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("+ NOVÉ", fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Text("NOVÉ", fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 }
             }
 
@@ -359,19 +359,19 @@ fun AdminDrawerContent(
                                         renameInputText = thread.threadTitle
                                         threadToRename = thread
                                     },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(32.dp).minimumInteractiveComponentSize()
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Edit,
                                         contentDescription = "Přejmenovat vlákno",
                                         tint = OmnisTextMuted.copy(alpha = 0.6f),
-                                        modifier = Modifier.size(13.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
 
                                 IconButton(
                                     onClick = { onDeleteThread(thread.threadId) },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(32.dp).minimumInteractiveComponentSize()
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Close,
@@ -388,8 +388,8 @@ fun AdminDrawerContent(
 
             HorizontalDivider(color = OmnisBorderDark.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 8.dp))
 
-            // 1. Sekce: KONVERZACE
-            AdminSectionHeader("💬 KONVERZACE")
+            // 1. Sekce: KONVERZACE & SÍTĚ
+            AdminSectionHeader("💬 KONVERZACE & SÍTĚ")
 
             AdminDrawerItem(
                 title = "Kognitivní Chat",
@@ -400,19 +400,6 @@ fun AdminDrawerContent(
             )
 
             AdminDrawerItem(
-                title = "Sémantický Testovací Chat",
-                icon = Icons.Default.Science,
-                selected = activeTab == OmnisTab.TEST_SEMANTIC,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.TEST_SEMANTIC) }
-            )
-
-            HorizontalDivider(color = OmnisBorderDark.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 6.dp))
-
-            // 2. Sekce: KOGNICE
-            AdminSectionHeader("🧠 KOGNICE")
-
-            AdminDrawerItem(
                 title = "Neural Nexus",
                 icon = Icons.Default.Hub,
                 selected = activeTab == OmnisTab.NEXUS,
@@ -421,57 +408,17 @@ fun AdminDrawerContent(
             )
 
             AdminDrawerItem(
-                title = "Multi-Agentní Debata",
-                icon = Icons.Default.Groups,
-                selected = activeTab == OmnisTab.MULTI_AGENT_DEBATE,
+                title = "Historická Paměť",
+                icon = Icons.Default.Psychology,
+                selected = activeTab == OmnisTab.MEMORY,
                 tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.MULTI_AGENT_DEBATE) }
-            )
-
-            AdminDrawerItem(
-                title = "Octagon 8D Matice",
-                icon = Icons.Default.Grid4x4,
-                selected = activeTab == OmnisTab.MATRIX,
-                tint = OmnisViolet,
-                onClick = { onTabSelected(OmnisTab.MATRIX) }
-            )
-
-            AdminDrawerItem(
-                title = "Kognitivní Uzly & Invarianty",
-                icon = Icons.Default.AccountTree,
-                selected = activeTab == OmnisTab.NODES,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.NODES) }
-            )
-
-            AdminDrawerItem(
-                title = "Do(X) Kauzální Simulátor",
-                icon = Icons.Default.AccountTree,
-                selected = activeTab == OmnisTab.CAUSAL_SIMULATOR,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.CAUSAL_SIMULATOR) }
-            )
-
-            AdminDrawerItem(
-                title = "Tenzorový Dohled & Autoregrese",
-                icon = Icons.Default.Autorenew,
-                selected = activeTab == OmnisTab.TENSOR_OVERSIGHT,
-                tint = OmnisViolet,
-                onClick = { onTabSelected(OmnisTab.TENSOR_OVERSIGHT) }
-            )
-
-            AdminDrawerItem(
-                title = "Dev Prompt Lab",
-                icon = Icons.Default.Terminal,
-                selected = activeTab == OmnisTab.DEV_PROMPT_LAB,
-                tint = OmnisViolet,
-                onClick = { onTabSelected(OmnisTab.DEV_PROMPT_LAB) }
+                onClick = { onTabSelected(OmnisTab.MEMORY) }
             )
 
             HorizontalDivider(color = OmnisBorderDark.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 6.dp))
 
-            // 3. Sekce: CÍLE
-            AdminSectionHeader("🎯 CÍLE")
+            // 2. Sekce: CÍLE & VÝSTUPY
+            AdminSectionHeader("🎯 CÍLE & ARTEFAKTY")
 
             AdminDrawerItem(
                 title = "Operační Kokpit",
@@ -507,8 +454,8 @@ fun AdminDrawerContent(
 
             HorizontalDivider(color = OmnisBorderDark.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 6.dp))
 
-            // 4. Sekce: SPRÁVA
-            AdminSectionHeader("⚙️ SPRÁVA")
+            // 3. Sekce: SPRÁVA & CORE HUB
+            AdminSectionHeader("⚙️ SPRÁVA & DIAGNOSTIKA")
 
             AdminDrawerItem(
                 title = "Administrátorské Centrum",
@@ -519,27 +466,11 @@ fun AdminDrawerContent(
             )
 
             AdminDrawerItem(
-                title = "Systémová Telemetrie",
-                icon = Icons.Default.Dns,
-                selected = activeTab == OmnisTab.TELEMETRY,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.TELEMETRY) }
-            )
-
-            AdminDrawerItem(
-                title = "APEX Telemetrie",
-                icon = Icons.Default.Insights,
-                selected = activeTab == OmnisTab.APEX_DASHBOARD,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.APEX_DASHBOARD) }
-            )
-
-            AdminDrawerItem(
-                title = "Produkční Audit & Benchmark",
-                icon = Icons.Default.VerifiedUser,
-                selected = activeTab == OmnisTab.PRODUCTION_AUDIT,
-                tint = OmnisEmerald,
-                onClick = { onTabSelected(OmnisTab.PRODUCTION_AUDIT) }
+                title = OmnisStrings.tabTitle(OmnisTab.CORE_TELEMETRY),
+                icon = Icons.Default.Analytics,
+                selected = activeTab == OmnisTab.CORE_TELEMETRY,
+                tint = OmnisViolet,
+                onClick = { onTabSelected(OmnisTab.CORE_TELEMETRY) }
             )
 
             AdminDrawerItem(
@@ -548,14 +479,6 @@ fun AdminDrawerContent(
                 selected = activeTab == OmnisTab.GUIDE,
                 tint = OmnisAmber,
                 onClick = { onTabSelected(OmnisTab.GUIDE) }
-            )
-
-            AdminDrawerItem(
-                title = OmnisStrings.tabTitle(OmnisTab.SYNC_LOGS),
-                icon = Icons.Default.CloudSync,
-                selected = activeTab == OmnisTab.SYNC_LOGS,
-                tint = OmnisCyan,
-                onClick = { onTabSelected(OmnisTab.SYNC_LOGS) }
             )
 
             AdminDrawerItem(
@@ -719,7 +642,7 @@ fun AdminDrawerContent(
 
                     IconButton(
                         onClick = onLogoutClick,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ExitToApp,
@@ -768,6 +691,7 @@ private fun AdminDrawerItem(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .padding(vertical = 2.dp)
             .clickable { onClick() },
         color = if (selected) tint.copy(alpha = 0.15f) else Color.Transparent,

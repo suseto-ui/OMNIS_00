@@ -14,8 +14,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
 
 sealed class RegistrationResult {
     data class Success(val user: UserEntity, val token: String) : RegistrationResult()
@@ -194,7 +192,7 @@ class UserAuthService {
         }
     }
 
-    suspend fun loginWithGoogle(idToken: String, firebaseUser: com.google.firebase.auth.FirebaseUser? = null): AuthResult = withContext(Dispatchers.IO) {
+    suspend fun loginWithGoogle(idToken: String, googleAccount: GoogleAccountInfo? = null): AuthResult = withContext(Dispatchers.IO) {
         try {
             val json = JSONObject().apply {
                 put("id_token", idToken)
@@ -207,32 +205,40 @@ class UserAuthService {
 
             val response = client.newCall(request).execute()
             val rawBody = response.body?.string() ?: ""
-            
+
             if (response.isSuccessful) {
                 val resJson = try { JSONObject(rawBody) } catch (_: Exception) { JSONObject() }
                 val token = resJson.optString("access_token")
                 if (token.isEmpty()) {
-                    createLocalGoogleSession(firebaseUser)
+                    createLocalGoogleSession(googleAccount)
                 } else {
-                    val username = resJson.optString("username", firebaseUser?.displayName ?: "Google User")
+                    val username = resJson.optString(
+                        "username",
+                        googleAccount?.displayName ?: googleAccount?.email?.substringBefore("@") ?: "Google User"
+                    )
                     val role = resJson.optString("role", "STANDARD_USER")
-                    
+
                     AuthResult.Success(
                         AuthSession(token = token, username = username, role = parseUserRole(role))
                     )
                 }
             } else {
-                createLocalGoogleSession(firebaseUser, "Backend unreachable, using local Google session")
+                createLocalGoogleSession(googleAccount)
             }
         } catch (e: Exception) {
-            createLocalGoogleSession(firebaseUser, "Offline fallback: ${e.localizedMessage ?: "Network error"}")
+            createLocalGoogleSession(googleAccount)
         }
     }
 
-    private fun createLocalGoogleSession(firebaseUser: com.google.firebase.auth.FirebaseUser?, fallbackReason: String = ""): AuthResult {
-        val user = firebaseUser ?: com.google.firebase.Firebase.auth.currentUser
-        val username = user?.displayName ?: user?.email?.substringBefore("@") ?: "Google User"
-        val token = "local_google_token_${user?.uid ?: System.currentTimeMillis()}"
+    private fun createLocalGoogleSession(googleAccount: GoogleAccountInfo?): AuthResult {
+        val username = googleAccount?.displayName?.takeIf { it.isNotBlank() }
+            ?: googleAccount?.email?.substringBefore("@")?.takeIf { it.isNotBlank() }
+            ?: googleAccount?.uid?.takeIf { it.isNotBlank() }
+            ?: "Google User"
+        val token = JwtTokenManager.createToken(
+            subject = username,
+            role = UserRole.STANDARD_USER.name
+        )
         return AuthResult.Success(
             AuthSession(
                 token = token,

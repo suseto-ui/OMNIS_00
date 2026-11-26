@@ -4,14 +4,10 @@ import android.content.Context
 import android.util.Log
 import com.example.api.OmnisGeminiClient
 import com.example.auth.OmnisAuthService
-import com.google.firebase.Firebase
-import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.auth.auth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -36,18 +32,8 @@ object OmnisSyncManager {
             .build()
     }
 
-    private suspend fun resolveBearerToken(): String? {
-        val omnisToken = OmnisAuthService.currentSession.value?.token?.takeIf { it.isNotBlank() }
-        if (omnisToken != null) return omnisToken
-        return runCatching {
-            Firebase.auth.currentUser?.getIdToken(false)?.await()?.token
-        }.getOrNull()?.takeIf { it.isNotBlank() }
-    }
-
-    private suspend fun resolveAppCheckToken(): String? {
-        return runCatching {
-            FirebaseAppCheck.getInstance().getAppCheckToken(false).await().token
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+    private fun resolveBearerToken(): String? {
+        return OmnisAuthService.currentSession.value?.token?.takeIf { it.isNotBlank() }
     }
 
     /**
@@ -91,7 +77,6 @@ object OmnisSyncManager {
                 }
 
                 val bearerToken = resolveBearerToken()
-                val appCheckToken = resolveAppCheckToken()
 
                 // 1. Synchronizace lokálních vláken na backend (/api/memory/sync)
                 val localThreads = repository.allThreads.first()
@@ -113,12 +98,11 @@ object OmnisSyncManager {
                     val mediaType = "application/json; charset=utf-8".toMediaType()
                     val payloadBytes = payload.toString().toByteArray(Charsets.UTF_8)
                     val requestBody = payloadBytes.toRequestBody(mediaType)
-                    val postReqBuilder = Request.Builder()
+                    val postRequest = Request.Builder()
                         .url(syncUrl)
                         .header("Authorization", "Bearer $bearerToken")
                         .post(requestBody)
-                    appCheckToken?.let { postReqBuilder.header("X-Firebase-AppCheck", it) }
-                    val postRequest = postReqBuilder.build()
+                        .build()
 
                     val pushStartMs = System.currentTimeMillis()
                     httpClient.newCall(postRequest).execute().use { syncResponse ->
@@ -148,12 +132,11 @@ object OmnisSyncManager {
                     return@launch
                 }
                 val getUrl = OmnisGeminiClient.baseUrl + "api/threads"
-                val getReqBuilder = Request.Builder()
+                val getRequest = Request.Builder()
                     .url(getUrl)
                     .header("Authorization", "Bearer $bearerToken")
                     .get()
-                appCheckToken?.let { getReqBuilder.header("X-Firebase-AppCheck", it) }
-                val getRequest = getReqBuilder.build()
+                    .build()
 
                 val pullStartMs = System.currentTimeMillis()
                 httpClient.newCall(getRequest).execute().use { getResponse ->

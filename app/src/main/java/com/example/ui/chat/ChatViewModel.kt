@@ -88,8 +88,11 @@ class ChatViewModel(private val repository: OmnisRepository) : ViewModel() {
                 Proveď hloubkovou technickou analýzu a navrhni řešení v souladu s protokolem O.M.N.I.S.
             """.trimIndent()
 
-            // 5. Volání AI Služby s APEX Master Protokolem
-            val result = com.example.api.FirebaseAiService.generateContent(expertPrompt)
+            // 5. Volání AI Služby s APEX Master Protokolem přes Sovereign Backend -> KeyPool kaskádu
+            val result = com.example.api.OmnisGeminiClient.generateCascadeText(
+                prompt = expertPrompt,
+                useLite = com.example.api.OmnisGeminiClient.isEcoModeEnabled.value
+            )
             
             result.onSuccess { rawResponseText ->
                 // APEX Orchestrátor: Spuštění 4-krokového protokolu a sanitizace

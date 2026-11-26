@@ -49,9 +49,18 @@ fun UserTabRouter(
 ) {
     Crossfade(targetState = activeTab, modifier = modifier.fillMaxSize(), label = "user_tab_transition") { currentTab ->
         when (currentTab) {
+            OmnisTab.CORE_TELEMETRY -> {
+                com.example.ui.telemetry.CoreTelemetryHubView(
+                    viewModel = viewModel,
+                    userRole = UserRole.STANDARD_USER,
+                    records = records,
+                    isLoading = isLoading,
+                    inputQuery = inputQuery
+                )
+            }
             OmnisTab.SYNC_LOGS -> {
                 com.example.ui.components.SyncLogScreen(
-                    onBack = { viewModel.setTab(OmnisTab.DASHBOARD) }
+                    onBack = { viewModel.setTab(OmnisTab.CORE_TELEMETRY) }
                 )
             }
             OmnisTab.MULTI_AGENT_DEBATE -> {

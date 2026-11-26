@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -7,10 +8,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.OmnisMainScreen
-import com.example.ai.configureAppCheck
 import com.example.ui.OmnisViewModel
 import com.example.ui.PdfExportEngine
 import com.example.ui.SpeechController
@@ -18,11 +20,12 @@ import com.example.ui.theme.OmnisTheme
 
 class MainActivity : ComponentActivity() {
     private lateinit var speechController: SpeechController
+    private val incomingIntentState = mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        configureAppCheck(this, intent)
         enableEdgeToEdge()
+        incomingIntentState.value = intent
 
         speechController = SpeechController(this)
         speechController.initialize()
@@ -38,6 +41,12 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val viewModel: OmnisViewModel = viewModel()
+                    val currentIntent = incomingIntentState.value
+
+                    LaunchedEffect(currentIntent) {
+                        viewModel.handleIncomingShareIntent(currentIntent)
+                    }
+
                     OmnisMainScreen(
                         viewModel = viewModel,
                         onSpeak = { text ->
@@ -52,9 +61,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        incomingIntentState.value = intent
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         speechController.shutdown()
     }
 }
-

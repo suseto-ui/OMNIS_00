@@ -218,15 +218,222 @@ class OmnisViewModel @JvmOverloads constructor(
         isPromptGuideEnabled.value = enabled
     }
 
-    // Loading & Inputs
+    // Loading & Inputs & Incoming Share Sheet
     val isLoading = MutableStateFlow(false)
     val inputQuery = MutableStateFlow("")
     private val _ocrValidationState = MutableStateFlow<OcrValidationState?>(null)
     val ocrValidationState: StateFlow<OcrValidationState?> = _ocrValidationState.asStateFlow()
     val isOcrLoading = MutableStateFlow(false)
 
+    private val _pendingSharePayload = MutableStateFlow<com.example.share.PendingSharePayload?>(null)
+    val pendingSharePayload: StateFlow<com.example.share.PendingSharePayload?> = _pendingSharePayload.asStateFlow()
+
+    private val _stagedChatAttachment = MutableStateFlow<com.example.share.SharedAttachment?>(null)
+    val stagedChatAttachment: StateFlow<com.example.share.SharedAttachment?> = _stagedChatAttachment.asStateFlow()
+
+    private val _stagedChatAttachments = MutableStateFlow<List<com.example.share.SharedAttachment>>(emptyList())
+    val stagedChatAttachments: StateFlow<List<com.example.share.SharedAttachment>> = _stagedChatAttachments.asStateFlow()
+
+    private var lastHandledShareFingerprint: String? = null
+
     fun onQueryChange(query: String) {
         inputQuery.value = query
+    }
+
+    private fun deleteCachedFilesSafely(attachments: List<com.example.share.SharedAttachment>) {
+        if (attachments.isEmpty()) return
+        val cacheRoot = java.io.File(getApplication<Application>().cacheDir, "shared_inputs").canonicalFile
+        attachments.forEach { att ->
+            runCatching {
+                val f = java.io.File(att.localCachePath).canonicalFile
+                if (f.parentFile == cacheRoot && f.exists()) {
+                    f.delete()
+                }
+            }
+        }
+    }
+
+    fun clearStagedChatAttachment() {
+        val current = _stagedChatAttachments.value.ifEmpty {
+            listOfNotNull(_stagedChatAttachment.value)
+        }
+        deleteCachedFilesSafely(current)
+        _stagedChatAttachment.value = null
+        _stagedChatAttachments.value = emptyList()
+    }
+
+    fun handleIncomingShareIntent(intent: android.content.Intent?) {
+        val fingerprint = com.example.share.SharePayloadParser.buildIntentFingerprint(intent) ?: return
+        if (fingerprint == lastHandledShareFingerprint) return
+        lastHandledShareFingerprint = fingerprint
+
+        viewModelScope.launch {
+            val payload = com.example.share.SharePayloadParser.parse(getApplication(), intent)
+            if (payload != null) {
+                _pendingSharePayload.value = payload
+            }
+        }
+    }
+
+    fun dismissPendingShare() {
+        _pendingSharePayload.value?.let { dismissed ->
+            deleteCachedFilesSafely(dismissed.attachments)
+        }
+        _pendingSharePayload.value = null
+    }
+
+    fun applyShareToChatInput() {
+        val payload = _pendingSharePayload.value ?: return
+        _pendingSharePayload.value = null
+        activeTab.value = OmnisTab.CHAT
+
+        val draft = buildString {
+            payload.subject?.let { appendLine(it) }
+            payload.sharedText?.let { append(it) }
+            if (payload.sharedText.isNullOrBlank() && payload.attachments.isNotEmpty()) {
+                val names = payload.attachments.joinToString(", ") { it.displayName }
+                append("Analyzuj přiložený obsah: $names")
+            }
+        }.trim()
+
+        if (draft.isNotBlank()) {
+            inputQuery.value = draft
+        }
+        _stagedChatAttachments.value = payload.attachments
+        _stagedChatAttachment.value = payload.attachments.firstOrNull()
+    }
+
+    fun summarizeSharedPayload() {
+        val payload = _pendingSharePayload.value ?: return
+        _pendingSharePayload.value = null
+        activeTab.value = OmnisTab.CHAT
+
+        viewModelScope.launch {
+            isOcrLoading.value = true
+            val prompt = buildEnrichedSharePrompt(
+                payload = payload,
+                instruction = "Vytvoř stručné, strukturované shrnutí klíčových faktů, argumentů a doporučených kroků k následujícímu sdílenému obsahu:"
+            )
+            isOcrLoading.value = false
+            val firstAttach = payload.attachments.firstOrNull()?.localCachePath
+            if (prompt.isNotBlank()) {
+                sendQuery(prompt, attachedImagePath = firstAttach, bypassGateway = true)
+            }
+        }
+    }
+
+    fun extractShareOcrOrPdf() {
+        val payload = _pendingSharePayload.value ?: return
+        _pendingSharePayload.value = null
+        activeTab.value = OmnisTab.CHAT
+
+        val targetAttachment = payload.attachments.firstOrNull { it.isPdf || it.isImage }
+        if (targetAttachment == null) {
+            applyShareToChatInput()
+            return
+        }
+
+        viewModelScope.launch {
+            isOcrLoading.value = true
+            val extracted = extractAttachmentText(targetAttachment)
+            isOcrLoading.value = false
+            _ocrValidationState.value = OcrValidationState(
+                extractedText = extracted.ifBlank {
+                    "[${targetAttachment.displayName}] Nepodařilo se automaticky rozpoznat text — doplňte nebo upravte text ručně."
+                },
+                imageLocalPath = targetAttachment.localCachePath
+            )
+        }
+    }
+
+    fun analyzeSharedRisks() {
+        val payload = _pendingSharePayload.value ?: return
+        _pendingSharePayload.value = null
+        activeTab.value = OmnisTab.CHAT
+
+        viewModelScope.launch {
+            isOcrLoading.value = true
+            val prompt = buildEnrichedSharePrompt(
+                payload = payload,
+                instruction = "Proveď hloubkovou 8D analýzu rizik (právní dopady, bezpečnost, faktická spolehlivost, skryté hrozby a kaskádové efekty) pro tento sdílený vstup:"
+            )
+            isOcrLoading.value = false
+            val firstAttach = payload.attachments.firstOrNull()?.localCachePath
+            if (prompt.isNotBlank()) {
+                sendQuery(prompt, attachedImagePath = firstAttach, bypassGateway = true)
+            }
+        }
+    }
+
+    private suspend fun buildEnrichedSharePrompt(
+        payload: com.example.share.PendingSharePayload,
+        instruction: String
+    ): String {
+        val extractedParts = mutableListOf<String>()
+        for (att in payload.attachments.take(3)) {
+            if (att.isPdf || att.isImage) {
+                val text = extractAttachmentText(att)
+                if (text.isNotBlank()) {
+                    extractedParts.add("[Obsah souboru ${att.displayName}]:\n${text.take(3500)}")
+                } else {
+                    extractedParts.add("[Příloha: ${att.displayName} (${att.mimeType})]")
+                }
+            } else {
+                extractedParts.add("[Příloha: ${att.displayName} (${att.mimeType})]")
+            }
+        }
+
+        return buildString {
+            appendLine(instruction)
+            payload.subject?.let { appendLine("Předmět: $it") }
+            if (payload.detectedUrls.isNotEmpty()) {
+                appendLine("URL: ${payload.detectedUrls.joinToString(", ")}")
+            }
+            payload.sharedText?.let {
+                appendLine("Text:")
+                appendLine(it.take(3500))
+            }
+            if (extractedParts.isNotEmpty()) {
+                appendLine()
+                extractedParts.forEach { appendLine(it) }
+            }
+        }.trim()
+    }
+
+    private suspend fun extractAttachmentText(att: com.example.share.SharedAttachment): String = withContext(ioDispatcher) {
+        val file = java.io.File(att.localCachePath)
+        if (!file.exists()) return@withContext ""
+        return@withContext if (att.isPdf) {
+            runCatching {
+                PdfTextExtractor.extractText(getApplication(), android.net.Uri.fromFile(file), att.displayName)
+            }.getOrDefault("")
+        } else if (att.isImage) {
+            extractTextFromBitmapFile(file)
+        } else {
+            runCatching { file.readText().take(4000) }.getOrDefault("")
+        }
+    }
+
+    private suspend fun extractTextFromBitmapFile(file: java.io.File): String {
+        val base64 = runCatching {
+            val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath) ?: return@runCatching null
+            val maxDim = 1024f
+            val scale = kotlin.math.min(maxDim / bitmap.width.coerceAtLeast(1), maxDim / bitmap.height.coerceAtLeast(1)).coerceAtMost(1f)
+            val scaled = if (scale < 1f) {
+                android.graphics.Bitmap.createScaledBitmap(
+                    bitmap,
+                    (bitmap.width * scale).toInt().coerceAtLeast(1),
+                    (bitmap.height * scale).toInt().coerceAtLeast(1),
+                    true
+                ).also { if (it !== bitmap) bitmap.recycle() }
+            } else bitmap
+            val out = java.io.ByteArrayOutputStream()
+            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+            scaled.recycle()
+            android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+        }.getOrNull() ?: return ""
+
+        return OmnisGeminiClient.extractTextFromImage(base64).orEmpty()
     }
 
     fun updateOcrValidationText(text: String) {
@@ -256,13 +463,64 @@ class OmnisViewModel @JvmOverloads constructor(
     }
 
     fun extractTextFromImage(uri: Any?) {
-        isOcrLoading.value = true
-        _ocrValidationState.value = OcrValidationState(extractedText = "Extrahovaný text z obrázku...", imageLocalPath = uri?.toString() ?: "")
-        isOcrLoading.value = false
+        val androidUri = uri as? android.net.Uri
+        if (androidUri == null) {
+            _ocrValidationState.value = OcrValidationState(extractedText = "", imageLocalPath = uri?.toString() ?: "")
+            return
+        }
+        viewModelScope.launch {
+            isOcrLoading.value = true
+            val cacheFile = withContext(ioDispatcher) {
+                val ctx = getApplication<Application>()
+                val dir = java.io.File(ctx.cacheDir, "shared_inputs").apply { mkdirs() }
+                com.example.share.SharePayloadParser.pruneStaleCache(dir)
+                val dest = java.io.File(dir, "ocr_${System.currentTimeMillis()}.jpg")
+                runCatching {
+                    ctx.contentResolver.openInputStream(androidUri)?.use { input ->
+                        java.io.FileOutputStream(dest).use { output -> input.copyTo(output) }
+                    }
+                    dest
+                }.getOrNull()
+            }
+            val extracted = if (cacheFile != null && cacheFile.exists()) {
+                extractTextFromBitmapFile(cacheFile)
+            } else ""
+            isOcrLoading.value = false
+            _ocrValidationState.value = OcrValidationState(
+                extractedText = extracted,
+                imageLocalPath = cacheFile?.absolutePath ?: androidUri.toString()
+            )
+        }
     }
 
     fun extractTextFromDocument(uri: Any?, name: String, mimeType: String) {
-        sendQuery("Analyzuj dokument: $name ($mimeType)")
+        val androidUri = uri as? android.net.Uri
+        if (androidUri == null) {
+            sendQuery("Analyzuj dokument: $name ($mimeType)")
+            return
+        }
+        viewModelScope.launch {
+            isOcrLoading.value = true
+            val extracted = if (mimeType.contains("pdf", ignoreCase = true) || name.endsWith(".pdf", ignoreCase = true)) {
+                runCatching { PdfTextExtractor.extractText(getApplication(), androidUri, name) }.getOrDefault("")
+            } else {
+                withContext(ioDispatcher) {
+                    runCatching {
+                        val bytes = getApplication<Application>().contentResolver.openInputStream(androidUri)?.use { it.readBytes() }
+                        if (bytes != null && bytes.size <= 2 * 1024 * 1024) {
+                            val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                            OmnisGeminiClient.extractTextFromDocument(b64, mimeType).orEmpty()
+                        } else ""
+                    }.getOrDefault("")
+                }
+            }
+            isOcrLoading.value = false
+            if (extracted.isNotBlank()) {
+                sendQuery("Analyzuj dokument $name:\n\n${extracted.take(4000)}", bypassGateway = true)
+            } else {
+                sendQuery("Analyzuj dokument: $name ($mimeType)")
+            }
+        }
     }
 
     // Actions & History
@@ -759,7 +1017,17 @@ class OmnisViewModel @JvmOverloads constructor(
         bypassGateway: Boolean = false,
         executiveOverride: Boolean = modifySystemState.value && currentRole.value == UserRole.ADMIN_OPERATOR
     ) {
-        val textToSend = if (query.isBlank()) inputQuery.value else query
+        val stagedList = _stagedChatAttachments.value
+        val stagedFirst = _stagedChatAttachment.value
+        val baseQuery = if (query.isBlank()) inputQuery.value else query
+        val extraAttachSuffix = if (stagedList.size > 1) {
+            "\n[Sdílené přílohy (${stagedList.size}): ${stagedList.joinToString(", ") { it.displayName }}]"
+        } else ""
+        val textToSend = when {
+            baseQuery.isNotBlank() -> (baseQuery + extraAttachSuffix).trim()
+            stagedFirst != null -> ("Analyzuj přiložený obsah: ${stagedFirst.displayName}" + extraAttachSuffix).trim()
+            else -> ""
+        }
         if (textToSend.isBlank()) return
 
         // Anti-Spam Throttling: Check if already loading or identical query within 2 seconds
@@ -770,6 +1038,9 @@ class OmnisViewModel @JvmOverloads constructor(
         lastSubmittedQuery = textToSend
         lastSubmittedTime = currentTime
 
+        val effectiveAttachmentPath = attachedImagePath ?: stagedFirst?.localCachePath
+        _stagedChatAttachment.value = null
+        _stagedChatAttachments.value = emptyList()
         inputQuery.value = ""
 
         if (!bypassGateway && isPromptGatewayEnabled.value && userExperienceMode.value == UserExperienceMode.EXPERT) {
@@ -791,7 +1062,7 @@ class OmnisViewModel @JvmOverloads constructor(
                 role = "user",
                 content = textToSend,
                 threadId = activeThreadId.value,
-                attachedImagePath = attachedImagePath
+                attachedImagePath = effectiveAttachmentPath
             )
             withContext(ioDispatcher) {
                 repository.insert(userRecord)
@@ -828,7 +1099,7 @@ class OmnisViewModel @JvmOverloads constructor(
                 val correctionPrompt = "Předchozí výstup vyžaduje hlubší verifikaci. Autonomně doplňte data a zpřesněte technické detaily pro: $textToSend. Původní odpověď byla: $initialAnswer"
                 val correctedRes = OmnisGeminiClient.synthesize(
                     query = correctionPrompt,
-                    domain = focusedDomain.value ?: "SYSTEMS_INTELLIGENCE",
+                    domain = focusedDomain.value ?: "SYSTEM_INTELLIGENCE",
                     memoryFragments = memoryFragments.value,
                     threadHistory = records.value,
                     userExperienceMode = userExperienceMode.value,
