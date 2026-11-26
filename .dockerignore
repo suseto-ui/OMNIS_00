@@ -49,7 +49,6 @@ frontend/dist/
 # Dokumentace, Vault a pomocné skripty (v kontejneru za běhu nepotřebné)
 *.md
 _OMNIS_VAULT/
-scripts/
 docker-compose.yml
 detekt.yml
 sonar-project.properties

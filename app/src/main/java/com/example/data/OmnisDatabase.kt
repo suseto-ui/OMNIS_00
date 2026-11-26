@@ -224,14 +224,23 @@ abstract class OmnisDatabase : RoomDatabase() {
                     DATABASE_NAME
                 ).addMigrations(*ALL_MIGRATIONS)
 
-                if (BuildConfig.DEBUG && DatabaseConfig.isTesting) {
+                if (BuildConfig.DEBUG) {
                     builder.fallbackToDestructiveMigration()
+                    builder.fallbackToDestructiveMigrationOnDowngrade()
                 }
 
                 if (!DatabaseConfig.isTesting) {
-                    System.loadLibrary("sqlcipher")
-                    val passphrase = com.example.security.DatabasePassphraseProvider.getDatabasePassphrase(appContext)
-                    builder.openHelperFactory(net.zetetic.database.sqlcipher.SupportOpenHelperFactory(passphrase))
+                    try {
+                        System.loadLibrary("sqlcipher")
+                        val passphrase = com.example.security.DatabasePassphraseProvider.getDatabasePassphrase(appContext)
+                        builder.openHelperFactory(net.zetetic.database.sqlcipher.SupportOpenHelperFactory(passphrase))
+                    } catch (t: Throwable) {
+                        android.util.Log.e(
+                            "OmnisDatabase",
+                            "SQLCipher initialization failed, falling back to standard Room SQLite: ${t.message}",
+                            t
+                        )
+                    }
                 }
 
                 val instance = builder.build()

@@ -6,7 +6,7 @@
 FROM postgres:17-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    AGE_VERSION=PG17/v1.5.0-rc0
+    AGE_VERSION=REL1.5.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Build and install Apache AGE from official source for PostgreSQL 17
 RUN git clone --depth 1 --branch "${AGE_VERSION}" https://github.com/apache/age.git /tmp/age || \
+    git clone --depth 1 --branch "v1.5.0" https://github.com/apache/age.git /tmp/age || \
     git clone --depth 1 --branch "master" https://github.com/apache/age.git /tmp/age \
     && cd /tmp/age \
     && make PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config install \

@@ -9,6 +9,15 @@
 # ==============================================================================
 set -euo pipefail
 
+# Aktivace virtuálního prostředí, pokud existuje
+if [ -f ".venv/bin/activate" ]; then
+    source ".venv/bin/activate"
+elif [ -f "venv/bin/activate" ]; then
+    source "venv/bin/activate"
+elif [ -f "/opt/omnis/.venv/bin/activate" ]; then
+    source "/opt/omnis/.venv/bin/activate"
+fi
+
 echo "===================================================================="
 echo "[O.M.N.I.S. APEX v4.5] Spouštím verifikační závoru (Integrity Gate)..."
 echo "===================================================================="
@@ -66,14 +75,18 @@ PYEOF
 
 # 3. Pytest / unittest integrity & ZK audit ledger tests
 echo "[Gate 3] Spouštím backendové integrační a ZK audit ledger testy..."
-if command -v pytest &> /dev/null && python3 -c "import sqlalchemy" &> /dev/null; then
-    pytest backend/tests/test_unified_db_integrity.py backend/tests/test_phase2_age_and_zk_ledger.py -v || {
+PYTHONPATH=. python3 -c "import fastapi, sqlalchemy" &> /dev/null || {
+    echo "WARNING: Python prostředí postrádá fastapi/sqlalchemy v lokálním shellu, zkouším venv..."
+}
+
+if command -v pytest &> /dev/null && PYTHONPATH=. python3 -c "import sqlalchemy" &> /dev/null; then
+    PYTHONPATH=. pytest backend/tests/test_unified_db_integrity.py backend/tests/test_phase2_age_and_zk_ledger.py -v || {
         echo "ERROR: Pytest selhal na verifikačních testech!"
         ERRORS=$((ERRORS + 1))
     }
 else
     echo "INFO: Používám python3 unittest runner..."
-    python3 -m unittest backend/tests/test_unified_db_integrity.py backend/tests/test_phase2_age_and_zk_ledger.py || {
+    PYTHONPATH=. python3 -m unittest backend/tests/test_unified_db_integrity.py backend/tests/test_phase2_age_and_zk_ledger.py || {
         echo "ERROR: Python unittest selhal!"
         ERRORS=$((ERRORS + 1))
     }

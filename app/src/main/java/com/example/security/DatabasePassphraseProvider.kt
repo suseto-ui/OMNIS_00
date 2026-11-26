@@ -38,6 +38,10 @@ object DatabasePassphraseProvider {
             }
 
             // 2. Pokud ještě neexistuje, vygenerujeme nový 256bitový (32 bajtů) náhodný klíč
+            // Pokud na disku zbyl starý DB soubor bez platného klíče (např. po ztrátě KeyStore),
+            // odstraníme jej, aby SQLCipher neselhal s 'file is not a database'.
+            deleteOrphanedDatabaseFiles(context)
+
             val randomBytes = ByteArray(32)
             SecureRandom().nextBytes(randomBytes)
             val base64Key = Base64.encodeToString(randomBytes, Base64.DEFAULT)
@@ -50,10 +54,26 @@ object DatabasePassphraseProvider {
             return randomBytes
         } catch (e: Exception) {
             Log.w(TAG, "KeyStore není dostupný, generování dynamického 256bit klíče v paměti: ${e.message}")
+            deleteOrphanedDatabaseFiles(context)
             val dynamicBytes = ByteArray(32)
             SecureRandom().nextBytes(dynamicBytes)
             cachedPassphrase = dynamicBytes
             return dynamicBytes
+        }
+    }
+
+    private fun deleteOrphanedDatabaseFiles(context: Context) {
+        try {
+            val dbFile = context.getDatabasePath(com.example.data.OmnisDatabase.DATABASE_NAME)
+            if (dbFile.exists()) {
+                Log.w(TAG, "Odstraňuji osiřelou šifrovanou DB bez dostupného klíče: ${dbFile.name}")
+                dbFile.delete()
+                java.io.File(dbFile.absolutePath + "-wal").delete()
+                java.io.File(dbFile.absolutePath + "-shm").delete()
+                java.io.File(dbFile.absolutePath + "-journal").delete()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Nepodařilo se vyčistit osiřelou DB: ${e.message}")
         }
     }
 

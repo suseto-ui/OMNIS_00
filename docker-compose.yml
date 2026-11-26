@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     build:
@@ -43,8 +41,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U postgres -d omnis_db"]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 15
+      start_period: 20s
 
   electric:
     image: electricsql/electric:1.8.1
@@ -56,6 +54,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_SYNC_USER:-omnis_sync_repl}:${POSTGRES_SYNC_PASSWORD:?POSTGRES_SYNC_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-omnis_db}?sslmode=disable
       ELECTRIC_INSECURE: ${ELECTRIC_INSECURE:-false}
+      ELECTRIC_SECRET: ${ELECTRIC_SECRET:?ELECTRIC_SECRET must be set in .env}
       ELECTRIC_PORT: 3000
     ports:
       - "127.0.0.1:3000:3000"
@@ -65,8 +64,8 @@ services:
       test: ["CMD-SHELL", "(wget -qO- http://127.0.0.1:3000/v1/health || curl -sf http://127.0.0.1:3000/v1/health || nc -z 127.0.0.1 3000) >/dev/null 2>&1"]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 15
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -106,8 +105,8 @@ services:
       test: ["CMD-SHELL", "(curl -sf http://127.0.0.1:8000/healthz || python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)\") >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 15s
+      retries: 10
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -119,8 +118,10 @@ services:
     container_name: omnis_caddy
     restart: unless-stopped
     depends_on:
-      - backend
-      - electric
+      backend:
+        condition: service_healthy
+      electric:
+        condition: service_healthy
     environment:
       DOMAIN_NAME: ${DOMAIN_NAME:-omnis.duckdns.org}
     ports:

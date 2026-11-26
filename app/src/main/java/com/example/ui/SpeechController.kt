@@ -36,7 +36,11 @@ class SpeechController(private val context: Context) : TextToSpeech.OnInitListen
 
     fun initialize() {
         if (tts == null) {
-            tts = TextToSpeech(context, this)
+            try {
+                tts = TextToSpeech(context, this)
+            } catch (e: Exception) {
+                Log.w("SpeechController", "TextToSpeech initialization failed: ${e.message}")
+            }
         }
         if (speechRecognizer == null && SpeechRecognizer.isRecognitionAvailable(context)) {
             try {
@@ -51,10 +55,10 @@ class SpeechController(private val context: Context) : TextToSpeech.OnInitListen
         if (status == TextToSpeech.SUCCESS) {
             val result = tts?.setLanguage(Locale.forLanguageTag("cs-CZ"))
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Toast.makeText(context, "Český jazyk pro TTS není dostupný.", Toast.LENGTH_SHORT).show()
+                Log.w("SpeechController", "Český jazyk pro TTS není na tomto zařízení dostupný.")
             }
         } else {
-            Toast.makeText(context, "Inicializace TTS selhala.", Toast.LENGTH_SHORT).show()
+            Log.w("SpeechController", "Inicializace TTS vrátila stav: $status")
         }
     }
 

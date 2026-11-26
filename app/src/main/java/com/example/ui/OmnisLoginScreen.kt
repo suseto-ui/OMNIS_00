@@ -534,6 +534,39 @@ fun OmnisLoginScreen(
                     Spacer(Modifier.width(8.dp))
                     Text("PŘIHLÁŠIT SE PŘES GOOGLE", color = Color.White)
                 }
+
+                // Lokální offline režim (striktně neprivilegovaná role STANDARD_USER)
+                TextButton(
+                    onClick = {
+                        errorMessage = null
+                        successMessage = null
+                        val localUser = username.trim().ifBlank { "operator" }
+                        val loggedIn = OmnisAuthService.login(
+                            context = context,
+                            username = localUser,
+                            secret = "local_offline_workspace",
+                            roleRequested = UserRole.STANDARD_USER
+                        )
+                        if (loggedIn) {
+                            onLoginSuccess()
+                        } else {
+                            errorMessage = "Nepodařilo se spustit lokální relaci."
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("auth_local_mode_button"),
+                    enabled = !isLoading
+                ) {
+                    Text(
+                        text = "SPUSTIT V LOKÁLNÍM REŽIMU (OFFLINE)",
+                        color = OmnisCyan,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
             }
         }
     }
