@@ -5,8 +5,7 @@
 # ==============================================================================
 FROM postgres:17-bookworm
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    AGE_VERSION=REL1.5.0
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -22,12 +21,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Build and install Apache AGE from official source for PostgreSQL 17
-RUN git clone --depth 1 --branch "${AGE_VERSION}" https://github.com/apache/age.git /tmp/age || \
-    git clone --depth 1 --branch "v1.5.0" https://github.com/apache/age.git /tmp/age || \
-    git clone --depth 1 --branch "master" https://github.com/apache/age.git /tmp/age \
-    && cd /tmp/age \
-    && make PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config install \
-    && rm -rf /tmp/age
+# Dynamically resolves verified PG17 branch/tag without silent fallback to breaking PG18 master
+RUN set -eux; \
+    AGE_REPO="https://github.com/apache/age.git"; \
+    echo "Vyhledavam kompatibilni vetev / tag pro PostgreSQL 17 v ${AGE_REPO}..."; \
+    REFS=$(git ls-remote --tags --heads "${AGE_REPO}" | grep -iE "PG17" | awk '{print $2}' || true); \
+    echo "Dostupne PG17 reference:"; \
+    echo "${REFS}"; \
+    TARGET_REF=""; \
+    for candidate in "refs/heads/release/PG17/1.7.0" "refs/tags/PG17/v1.6.0" "refs/tags/PG17/v1.6.0-rc0" "refs/heads/PG17_prepare" "refs/tags/PG17/v1.5.0-rc0" "refs/heads/PG17"; do \
+        if echo "${REFS}" | grep -Fxq "${candidate}"; then \
+            TARGET_REF="${candidate}"; \
+            break; \
+        fi; \
+    done; \
+    if [ -z "${TARGET_REF}" ]; then \
+        TARGET_REF=$(echo "${REFS}" | head -n 1); \
+    fi; \
+    if [ -z "${TARGET_REF}" ]; then \
+        echo "KRITICKA CHYBA: Zadna vetev ani tag pro PG17 nebyl v repozitari apache/age nalezen!" >&2; \
+        exit 1; \
+    fi; \
+    CLEAN_REF=$(echo "${TARGET_REF}" | sed -e 's|^refs/heads/||' -e 's|^refs/tags/||'); \
+    echo "Klonuji overenou PG17 referenci: ${CLEAN_REF}..."; \
+    git clone --depth 1 --branch "${CLEAN_REF}" "${AGE_REPO}" /tmp/age; \
+    cd /tmp/age; \
+    make PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config install; \
+    rm -rf /tmp/age
 
 RUN apt-get purge -y --auto-remove build-essential git bison flex postgresql-server-dev-17 \
     && rm -rf /var/lib/apt/lists/*
@@ -37,4 +57,3 @@ RUN chmod +x /usr/local/bin/omnis-entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/omnis-entrypoint.sh"]
 CMD ["postgres"]
-

@@ -9,7 +9,7 @@ on:
       backend_url:
         description: "Production Sovereign OMNIS_BACKEND_URL"
         required: false
-        default: "https://omnis-apex-core.duckdns.org"
+        default: "https://omnisbysuseto.duckdns.org"
 
 permissions:
   contents: write
@@ -46,7 +46,7 @@ jobs:
 
       - name: Build Android Release AAB & APK
         env:
-          OMNIS_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://omnis-apex-core.duckdns.org' }}
+          OMNIS_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://omnisbysuseto.duckdns.org' }}
         run: |
           if [ -f "./gradlew" ]; then
             ./gradlew :app:bundleRelease :app:assembleRelease -POMNIS_BACKEND_URL="$OMNIS_BACKEND_URL" --no-daemon --stacktrace

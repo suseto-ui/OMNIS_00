@@ -24,7 +24,7 @@ android {
         val omnisBackendUrl = (
             project.findProperty("OMNIS_BACKEND_URL")?.toString()?.takeIf { it.isNotBlank() }
                 ?: System.getenv("OMNIS_BACKEND_URL")?.takeIf { it.isNotBlank() }
-                ?: "https://omnis-apex-core.duckdns.org"
+                ?: "https://omnisbysuseto.duckdns.org"
             ).trimEnd('/')
         buildConfigField("String", "OMNIS_BACKEND_URL", "\"$omnisBackendUrl\"")
     }

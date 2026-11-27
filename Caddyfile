@@ -1,4 +1,4 @@
-{$DOMAIN_NAME:omnis.duckdns.org} {
+{$DOMAIN_NAME:omnisbysuseto.duckdns.org} {
     reverse_proxy /api/* backend:8000
     reverse_proxy /sync/* backend:8000
     reverse_proxy /health backend:8000

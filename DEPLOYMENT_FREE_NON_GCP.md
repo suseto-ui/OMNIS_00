@@ -12,7 +12,7 @@ Tento manuál obsahuje všechny kroky vyžadující lidskou interakci (registrac
 | **Realtime Sync** | Firebase Firestore | **ElectricSQL 1.8.1** (self-hosted nad PostgreSQL WAL) + **Room v19 SQLCipher AES-256** | **100% připraveno** (`omnis_electric` + `omnis_sync_outbox`) · [electric-sql.com](https://electric-sql.com/) |
 | **Doména & HTTPS** | Cloud Load Balancer / Managed SSL | **DuckDNS** (zdarma subdoména) + **Caddy 2** (automatický Let's Encrypt TLS přes HTTP-01/TLS-ALPN-01) | **100% připraveno** (`Caddyfile` s výchozím `omnis.duckdns.org` přepsatelným přes `DOMAIN_NAME`) · [duckdns.org](https://www.duckdns.org/) |
 | **Serverová LLM Kaskáda** | Placené Gemini / Vertex AI | **Ollama (`gemma4:e4b`)** -> **GroqCloud Free Tier** -> **Google AI Studio Free Tier** -> **OpenRouter `:free`** | **100% připraveno** (`backend/app/llm_cascade.py`) · [aistudio.google.com](https://aistudio.google.com/) / [console.groq.com](https://console.groq.com/) / [openrouter.ai](https://openrouter.ai/) |
-| **Android Client Auth & URL** | Cloud Run URL & Firebase Auth | **Sovereign server přes `-POMNIS_BACKEND_URL`** + volitelně Google Sign-In (`CredentialManager`) nebo OMNIS JWT (`/api/auth/login`) | **100% připraveno** (`app/build.gradle.kts` výchozí adresa míří na `https://omnis-apex-core.duckdns.org`, Room Outbox -> PostgreSQL 17 Gateway) |
+| **Android Client Auth & URL** | Cloud Run URL & Firebase Auth | **Sovereign server přes `-POMNIS_BACKEND_URL`** + volitelně Google Sign-In (`CredentialManager`) nebo OMNIS JWT (`/api/auth/login`) | **100% připraveno** (`app/build.gradle.kts` výchozí adresa míří na `https://omnisbysuseto.duckdns.org`, Room Outbox -> PostgreSQL 17 Gateway) |
 | **CI/CD & Analýza** | Google Cloud Build + SonarQube Paid | **GitHub Actions** (`production-ci-cd.yml`, `omnis-ci.yml`, `omnis-zero-cost-ci.yml`) + **SonarQube Cloud Free** | **100% připraveno** · [sonarcloud.io](https://sonarcloud.io/) |
 
 ---
@@ -76,7 +76,7 @@ Android zakazuje nešifrovaný HTTP provoz. Doména DuckDNS umožní kontejneru 
 
 1. Otevřete [https://www.duckdns.org/](https://www.duckdns.org/) a přihlaste se přes GitHub nebo Google účet.
 2. Zkopírujte svůj **token** z horní části stránky (`DUCKDNS_TOKEN`).
-3. Do pole **sub domain** zadejte unikátní název (např. `omnis-apex-core`) a klikněte **add domain** -> vznikne `omnis-apex-core.duckdns.org`.
+3. Do pole **sub domain** zadejte unikátní název (např. `omnis-apex-core`) a klikněte **add domain** -> vznikne `omnisbysuseto.duckdns.org`.
 4. Do pole **current ip** vložte **Public IPv4 adresu** svého OCI serveru z Kroku 2 a klikněte **update ip**.
 
 ---
@@ -162,7 +162,7 @@ ENV=production
 USE_OSS_POSTGRES_SYNC=true
 REQUIRE_APP_CHECK=false
 
-DOMAIN_NAME=omnis-apex-core.duckdns.org
+DOMAIN_NAME=omnisbysuseto.duckdns.org
 DUCKDNS_TOKEN=<VAS_DUCKDNS_TOKEN>
 
 # PostgreSQL 17 (služba 'db' v docker-compose.yml, DB 'omnis_db', least-privilege role)
@@ -239,12 +239,12 @@ docker compose exec backend python3 /app/scripts/ingest_open_data.py
 Ověřte HTTPS endpointy přes vaši doménu:
 
 ```bash
-curl -fsSL https://omnis-apex-core.duckdns.org/health
-curl -fsSL https://omnis-apex-core.duckdns.org/healthz
-curl -fsSL https://omnis-apex-core.duckdns.org/api/v1/health
+curl -fsSL https://omnisbysuseto.duckdns.org/health
+curl -fsSL https://omnisbysuseto.duckdns.org/healthz
+curl -fsSL https://omnisbysuseto.duckdns.org/api/v1/health
 
 source /opt/omnis/.env
-OMNIS_BACKEND_URL="https://omnis-apex-core.duckdns.org" \
+OMNIS_BACKEND_URL="https://omnisbysuseto.duckdns.org" \
 OMNIS_SYNC_API_KEY="${OMNIS_SYNC_API_KEY}" \
 ./scripts/verify_cutover.sh
 ```
@@ -260,7 +260,7 @@ V repozitáři na GitHubu otevřete **Settings -> Secrets and variables -> Actio
 | `OCI_VM_HOST` | Veřejná IPv4 adresa vašeho OCI serveru (např. `130.61.xxx.xxx`) | `omnis-zero-cost-ci.yml` SSH deploy |
 | `OCI_VM_USER` | `ubuntu` | `omnis-zero-cost-ci.yml` SSH deploy |
 | `OCI_SSH_PRIVATE_KEY` | Kompletní obsah privátního klíče `~/.ssh/omnis_oci_ed25519` | `omnis-zero-cost-ci.yml` SSH deploy |
-| `OMNIS_BACKEND_URL` | `https://omnis-apex-core.duckdns.org` | Build Android Release AAB/APK ve všech CI workflows |
+| `OMNIS_BACKEND_URL` | `https://omnisbysuseto.duckdns.org` | Build Android Release AAB/APK ve všech CI workflows |
 | `OMNIS_KEYSTORE_BASE64` *(volitelně)* | Base64 zakódovaný `.jks` keystore (`base64 -w0 release.jks`) | `production-ci-cd.yml` kryptografický podpis Release APK/AAB (`SIGNING_STATUS=SIGNED`; bez něj `UNSIGNED_R8_ONLY`) |
 | `OMNIS_KEYSTORE_PASSWORD` *(volitelně)* | Heslo ke keystore souboru | `production-ci-cd.yml` Release signing |
 | `OMNIS_KEY_ALIAS` *(volitelně)* | Alias klíče v keystore | `production-ci-cd.yml` Release signing |
@@ -283,8 +283,8 @@ Spusťte testy a sestavení APK/AAB nasměrované na váš nový server:
 
 ```bash
 gradle :app:testDebugUnitTest --no-daemon
-gradle :app:assembleDebug -POMNIS_BACKEND_URL=https://omnis-apex-core.duckdns.org --no-daemon
-gradle :app:bundleRelease -POMNIS_BACKEND_URL=https://omnis-apex-core.duckdns.org --no-daemon
+gradle :app:assembleDebug -POMNIS_BACKEND_URL=https://omnisbysuseto.duckdns.org --no-daemon
+gradle :app:bundleRelease -POMNIS_BACKEND_URL=https://omnisbysuseto.duckdns.org --no-daemon
 ```
 
 Hotový APK balíček najdete v `app/build/outputs/apk/debug/app-debug.apk`. Heslová registrace (`POST /api/auth/register`) pro hlavní administrátorský e-mail `susetofu@gmail.com` je z bezpečnostních důvodů blokována (HTTP 403); automatická elevace na roli `ADMIN_OPERATOR` probíhá výhradně po ověřeném přihlášení přes Google Sign-In (`POST /api/auth/google` s `email_verified: true`).

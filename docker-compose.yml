@@ -125,7 +125,7 @@ services:
       electric:
         condition: service_healthy
     environment:
-      DOMAIN_NAME: ${DOMAIN_NAME:-omnis.duckdns.org}
+      DOMAIN_NAME: ${DOMAIN_NAME:-omnisbysuseto.duckdns.org}
     ports:
       - "80:80"
       - "443:443"

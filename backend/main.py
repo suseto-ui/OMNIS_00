@@ -51,8 +51,10 @@ from backend import (
     apex_router,
 )
 from backend.auth_router import router as auth_router, user_router, get_current_user
+from backend.engine_router import router as engine_process_router
 from backend.config import get_settings
 from backend.models import User
+
 from backend.routers import inference_router
 
 logging.basicConfig(level=logging.INFO)
@@ -408,7 +410,9 @@ async def sqlalchemy_exception_handler(request, exc: SQLAlchemyError):
 app.include_router(system_router)
 app.include_router(cognitive_router)
 app.include_router(engine_router)
+app.include_router(engine_process_router)
 app.include_router(autopoiesis_router)
+
 app.include_router(memory_router)
 app.include_router(epistemic_router)
 app.include_router(multi_agent_router)

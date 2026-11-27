@@ -24,8 +24,11 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'omnis_sync_repl') THEN
         CREATE ROLE omnis_sync_repl WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE REPLICATION;
     END IF;
+    EXECUTE format('GRANT CREATE ON DATABASE %I TO omnis_sync_repl', current_database());
 END
 $$;
+
+GRANT CREATE, USAGE ON SCHEMA public TO omnis_app_rw, omnis_sync_repl;
 
 SET search_path = public, ag_catalog;
 
@@ -241,8 +244,22 @@ ON CONFLICT (source_code, target_code) DO NOTHING;
 -- ==============================================================================
 -- 7. Grant Permissions to Least-Privilege Roles
 -- ==============================================================================
-GRANT USAGE ON SCHEMA public TO omnis_app_rw, omnis_audit_append, omnis_sync_repl;
+GRANT USAGE, CREATE ON SCHEMA public TO omnis_app_rw, omnis_sync_repl;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.rag_embeddings_64d, public.causal_nodes, public.causal_edges, public.retraction_watch_blacklist TO omnis_app_rw;
 GRANT SELECT ON public.zk_audit_ledger TO omnis_app_rw;
 GRANT INSERT, SELECT ON public.zk_audit_ledger TO omnis_audit_append;
 GRANT USAGE, SELECT ON SEQUENCE public.zk_audit_ledger_seq_id_seq TO omnis_audit_append;
+
+-- ElectricSQL Logical Replication Publication
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'electric_publication_default') THEN
+        CREATE PUBLICATION electric_publication_default FOR ALL TABLES;
+    END IF;
+    ALTER PUBLICATION electric_publication_default OWNER TO omnis_sync_repl;
+END
+$$;
+
+GRANT ALL ON ALL TABLES IN SCHEMA public TO omnis_sync_repl;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO omnis_app_rw, omnis_sync_repl;
+

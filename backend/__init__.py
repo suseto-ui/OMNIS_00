@@ -13,6 +13,8 @@ try:
     from .admin_router import router as admin_router
     from .audit_router import router as audit_router
     from .apex_orchestrator_engine import apex_router
+    from .engine_router import router as engine_process_router
 except ImportError as err:
+
     import logging
     logging.getLogger("omnis.backend").warning("Failed to import router in backend package: %s", err)
